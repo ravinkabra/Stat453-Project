@@ -4,7 +4,7 @@ from hydra.utils import instantiate
 from torchmetrics import MetricCollection
 from torchmetrics.classification import Accuracy, Precision, Recall
 from abc import ABC, abstractmethod
-
+from typing import Any, Optional, Mapping
 from .config import BaseModelConfig
 
 
@@ -12,30 +12,30 @@ class BaseModel(LightningModule, ABC):
     def __init__(self, config: BaseModelConfig):
         super().__init__()
         self.config = config
-        self._setup_metrics()
+        # self._setup_metrics()
 
-    def _setup_metrics(self):
-        """
-        Initialize metrics for training, validation, and testing.
-        This is an example for a classification task. You should override this
-        method in your specific model to define task-appropriate metrics.
-        """
-        # Example: get num_classes from config, assuming it's defined there.
-        # You might need to add `num_classes` to your model's specific config.
-        num_classes = getattr(self.config, "num_classes", 10)
+    # def _setup_metrics(self):
+    #     """
+    #     Initialize metrics for training, validation, and testing.
+    #     This is an example for a classification task. You should override this
+    #     method in your specific model to define task-appropriate metrics.
+    #     """
+    #     # Example: get num_classes from config, assuming it's defined there.
+    #     # You might need to add `num_classes` to your model's specific config.
+    #     num_classes = getattr(self.config, "num_classes", 10)
 
-        metrics = MetricCollection(
-            {
-                "accuracy": Accuracy(task="multiclass", num_classes=num_classes),
-                "precision_macro": Precision(task="multiclass", num_classes=num_classes, average="macro"),
-                "recall_macro": Recall(task="multiclass", num_classes=num_classes, average="macro"),
-            }
-        )
+    #     metrics = MetricCollection(
+    #         {
+    #             "accuracy": Accuracy(task="multiclass", num_classes=num_classes),
+    #             "precision_macro": Precision(task="multiclass", num_classes=num_classes, average="macro"),
+    #             "recall_macro": Recall(task="multiclass", num_classes=num_classes, average="macro"),
+    #         }
+    #     )
 
-        # Create separate metric instances for each phase to avoid conflicts
-        self.train_metrics = metrics.clone(prefix="train_")
-        self.val_metrics = metrics.clone(prefix="val_")
-        self.test_metrics = metrics.clone(prefix="test_")
+    #     # Create separate metric instances for each phase to avoid conflicts
+    #     self.train_metrics = metrics.clone(prefix="train_")
+    #     self.val_metrics = metrics.clone(prefix="val_")
+    #     self.test_metrics = metrics.clone(prefix="test_")
 
     @abstractmethod
     def forward(self, batch):
@@ -112,3 +112,11 @@ class BaseModel(LightningModule, ABC):
             del lr_scheduler_config["monitor"]
 
         return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_config}
+
+    @abstractmethod
+    def decode(self,model_output)->Any:
+        """
+        Abstract method to decode the model output into a more interpretable format.
+        Must be implemented by subclasses.
+        """
+        raise NotImplementedError
