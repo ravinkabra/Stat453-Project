@@ -1,30 +1,10 @@
-from .config import BaseDataModuleConfig, BaseDatasetConfig
+from .config import BaseDataModuleConfig
+from hydra.utils import get_class
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import DataLoader, Dataset
-from abc import ABC, abstractmethod
+from torch.utils.data import DataLoader
+from ...dataset import UnionDataset
+from abc import ABC
 from typing import Optional
-from .model_input import BaseModelInput
-
-
-class BaseDataset(Dataset, ABC):
-    def __init__(self, config: BaseDatasetConfig):
-        self.config = config
-
-    def setup(self, stage: Optional[str] = None):
-        """Setup the dataset for train/validate/test/predict."""
-        pass
-
-    @abstractmethod
-    def __len__(self):
-        pass
-
-    @abstractmethod
-    def __getitem__(self, idx) -> BaseModelInput:
-        pass
-
-    def collate_fn(self, batch: list[BaseModelInput]) -> list[BaseModelInput]:
-        """Custom collate function if needed."""
-        return batch
 
 
 class BaseDataModule(LightningDataModule, ABC):
@@ -36,29 +16,36 @@ class BaseDataModule(LightningDataModule, ABC):
         """Setup the data module for training/validation/testing."""
         if stage == "fit" or stage is None:
             if self.config.train:
-                self.train_dataset = BaseDataset(self.config.train)
+                cls = get_class(self.config.train._target_)
+                self.train_dataset: UnionDataset = cls(self.config.train)
                 self.train_dataset.setup(stage="train")
             if self.config.val:
-                self.val_dataset = BaseDataset(self.config.val)
+                cls = get_class(self.config.val._target_)
+                self.val_dataset: UnionDataset = cls(self.config.val)
                 self.val_dataset.setup(stage="validate")
         if stage == "validate" or stage is None:
             if self.config.val:
-                self.val_dataset = BaseDataset(self.config.val)
+                cls = get_class(self.config.val._target_)
+                self.val_dataset: UnionDataset = cls(self.config.val)
                 self.val_dataset.setup(stage="validate")
         if stage == "test" or stage is None:
             if self.config.test:
-                self.test_dataset = BaseDataset(self.config.test)
+                cls = get_class(self.config.test._target_)
+                self.test_dataset: UnionDataset = cls(self.config.test)
                 self.test_dataset.setup(stage="test")
         if stage == "predict" or stage is None:
             if self.config.predict:
-                self.predict_dataset = BaseDataset(self.config.predict)
+                cls = get_class(self.config.predict._target_)
+                self.predict_dataset: UnionDataset = cls(self.config.predict)
                 self.predict_dataset.setup(stage="predict")
 
     def train_dataloader(self) -> DataLoader:
         """Return the training dataloader."""
         if self.train_dataset is None:
-            raise RuntimeError("Train dataset not initialized. Call setup('fit') first.")
-        
+            raise RuntimeError(
+                "Train dataset not initialized. Call setup('fit') first."
+            )
+
         return DataLoader(
             self.train_dataset,
             batch_size=self.config.train.batch_size,
@@ -75,8 +62,10 @@ class BaseDataModule(LightningDataModule, ABC):
     def val_dataloader(self) -> DataLoader:
         """Return the validation dataloader."""
         if self.val_dataset is None:
-            raise RuntimeError("Validation dataset not initialized. Call setup('fit') first.")
-            
+            raise RuntimeError(
+                "Validation dataset not initialized. Call setup('fit') first."
+            )
+
         return DataLoader(
             self.val_dataset,
             batch_size=self.config.val.batch_size,
@@ -91,8 +80,10 @@ class BaseDataModule(LightningDataModule, ABC):
     def test_dataloader(self) -> DataLoader:
         """Return the test dataloader."""
         if self.test_dataset is None:
-            raise RuntimeError("Test dataset not initialized. Call setup('test') first.")
-            
+            raise RuntimeError(
+                "Test dataset not initialized. Call setup('test') first."
+            )
+
         return DataLoader(
             self.test_dataset,
             batch_size=self.config.test.batch_size,
@@ -107,8 +98,10 @@ class BaseDataModule(LightningDataModule, ABC):
     def predict_dataloader(self):
         """Return the prediction dataloader."""
         if self.predict_dataset is None:
-            raise RuntimeError("Predict dataset not initialized. Call setup('predict') first.")
-            
+            raise RuntimeError(
+                "Predict dataset not initialized. Call setup('predict') first."
+            )
+
         return DataLoader(
             self.predict_dataset,
             batch_size=self.config.predict.batch_size,
