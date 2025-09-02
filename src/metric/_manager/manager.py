@@ -2,10 +2,11 @@ from .config import MetricLogConfig, ManagedMetricConfig, MetricManagerConfig
 
 import torch
 from torchmetrics import Metric
-from hydra.utils import instantiate
+from hydra.utils import instantiate, get_class
 from typing import TYPE_CHECKING, Mapping
 from pytorch_lightning import LightningModule
-
+from torchmetrics.classification import Recall
+from torchmetrics.audio import PerceptualEvaluationSpeechQuality
 # if TYPE_CHECKING:
 #     from ...model.base.model import BaseModel
 
@@ -29,9 +30,42 @@ class MetricManager(torch.nn.Module):
         self.log_configs: dict[str, MetricLogConfig] = {}
 
         for name, managed_config in config.metrics.items():
-            # Instantiate the actual torchmetric object, passing extra args like num_classes
-            self.metrics[name] = instantiate(managed_config.metric)
+            # 处理不同类型的 metric 输入
+            metric = self._instantiate_metric(managed_config.metric)
+            self.metrics[name] = metric
             self.log_configs[name] = managed_config.log_config
+
+    def _instantiate_metric(self, metric_input) -> Metric:
+        """
+        根据不同的输入类型实例化 metric
+
+        Args:
+            metric_input: 可以是 BaseMetricParams, Metric, str, 或 dict
+
+        Returns:
+            实例化的 Metric 对象
+        """
+        if isinstance(metric_input, Metric):
+            # 方式2: 直接传入已实例化的 Metric
+            return metric_input
+
+        elif isinstance(metric_input, str):
+            # 方式3: 字符串方式，使用默认参数
+            try:
+                metric_class = get_class(metric_input)
+                return metric_class()
+            except Exception as e:
+                raise ValueError(
+                    f"Failed to instantiate metric from string '{metric_input}': {e}"
+                )
+
+        elif isinstance(metric_input, dict):
+            # 方式4: 字典方式 (向后兼容)
+            return instantiate(metric_input)
+
+        else:
+            # 方式1: BaseMetricParams 或其他配置对象
+            return instantiate(metric_input)
 
     def update(self, preds: torch.Tensor, target: torch.Tensor) -> None:
         """Update the state of all managed metrics."""
@@ -62,9 +96,9 @@ class MetricManager(torch.nn.Module):
                 prog_bar=log_config.prog_bar,
                 reduce_fx=log_config.reduce_fx,
             )
-            
+
             model.log(
-                f"{phase}/{name}/epoch",  
+                f"{phase}/{name}/epoch",
                 metric,
                 on_step=False,
                 on_epoch=log_config.on_epoch,
@@ -79,6 +113,7 @@ class MetricManager(torch.nn.Module):
             #     prog_bar=log_config.prog_bar,
             #     reduce_fx=log_config.reduce_fx,
             # )
+
     def reset(self) -> None:
         """Reset the state of all managed metrics."""
         for metric in self.metrics.values():

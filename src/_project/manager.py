@@ -9,14 +9,20 @@
 - 支持实验管理和复现
 """
 
+import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from hydra.utils import instantiate
 from pytorch_lightning import Trainer, LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.loggers import Logger
+from pytorch_lightning.utilities import rank_zero_only
 
 from .config import ProjectConfig
+
+
+# 创建 logger
+logger = logging.getLogger(__name__)
 
 
 class ProjectManager:
@@ -66,14 +72,14 @@ class ProjectManager:
         """构建模型"""
         if self.model is None:
             self.model = instantiate(self.config.model)
-            print(f"✓ 模型已构建: {type(self.model).__name__}")
+            self._log_info(f"✓ 模型已构建: {type(self.model).__name__}")
         return self.model
 
     def build_datamodule(self) -> Optional[LightningDataModule]:
         """构建数据模块"""
         if self.config.datamodule and self.datamodule is None:
             self.datamodule = instantiate(self.config.datamodule)
-            print(f"✓ 数据模块已构建: {type(self.datamodule).__name__}")
+            self._log_info(f"✓ 数据模块已构建: {type(self.datamodule).__name__}")
         return self.datamodule
 
     def build_callbacks(self) -> List[Callback]:
@@ -82,7 +88,7 @@ class ProjectManager:
             for callback_name, callback_config in self.config.callbacks.items():
                 callback = instantiate(callback_config)
                 self.callbacks.append(callback)
-                print(f"✓ 回调已构建: {callback_name} -> {type(callback).__name__}")
+                self._log_info(f"✓ 回调已构建: {callback_name} -> {type(callback).__name__}")
         return self.callbacks
 
     def build_loggers(self) -> List[Logger]:
@@ -91,7 +97,7 @@ class ProjectManager:
             for logger_name, logger_config in self.config.logging.items():
                 logger = instantiate(logger_config)
                 self.loggers.append(logger)
-                print(f"✓ 日志器已构建: {logger_name} -> {type(logger).__name__}")
+                self._log_info(f"✓ 日志器已构建: {logger_name} -> {type(logger).__name__}")
         return self.loggers
 
     def build_trainer(self) -> Trainer:
@@ -124,7 +130,7 @@ class ProjectManager:
 
             # 创建原生 PyTorch Lightning Trainer
             self.trainer = Trainer(**trainer_config)
-            print(
+            self._log_info(
                 f"✓ PyTorch Lightning Trainer 已构建: {len(callbacks)} 个回调, {len(loggers)} 个日志器"
             )
 
@@ -134,18 +140,18 @@ class ProjectManager:
         self,
     ) -> tuple[LightningModule, Optional[LightningDataModule], Trainer]:
         """构建所有组件"""
-        print("🔧 开始构建项目组件...")
+        self._log_info("🔧 开始构建项目组件...")
 
         model = self.build_model()
         datamodule = self.build_datamodule()
         trainer = self.build_trainer()
 
-        print("🎉 所有组件构建完成！")
+        self._log_info("🎉 所有组件构建完成！")
         return model, datamodule, trainer
 
     def train(self) -> None:
         """开始训练"""
-        print("🚀 开始训练...")
+        self._log_info("🚀 开始训练...")
 
         model, datamodule, trainer = self.build_all()
 
@@ -158,42 +164,42 @@ class ProjectManager:
         # 开始训练
         trainer.fit(model, datamodule=datamodule)
 
-        print("✅ 训练完成！")
+        self._log_info("✅ 训练完成！")
 
     def validate(self) -> List[Dict[str, Any]]:
         """运行验证"""
-        print("🔍 开始验证...")
+        self._log_info("🔍 开始验证...")
 
         model, datamodule, trainer = self.build_all()
 
         # 运行验证
         results = trainer.validate(model, datamodule=datamodule)
 
-        print("✅ 验证完成！")
+        self._log_info("✅ 验证完成！")
         return results
 
     def test(self) -> List[Dict[str, Any]]:
         """运行测试"""
-        print("🧪 开始测试...")
+        self._log_info("🧪 开始测试...")
 
         model, datamodule, trainer = self.build_all()
 
         # 运行测试
         results = trainer.test(model, datamodule=datamodule)
 
-        print("✅ 测试完成！")
+        self._log_info("✅ 测试完成！")
         return results
 
     def predict(self, ckpt_path: Optional[str] = None) -> List[Any]:
         """运行预测"""
-        print("🔮 开始预测...")
+        self._log_info("🔮 开始预测...")
 
         model, datamodule, trainer = self.build_all()
 
         # 运行预测
         results = trainer.predict(model, datamodule=datamodule, ckpt_path=ckpt_path)
 
-        print("✅ 预测完成！")
+        self._log_info("✅ 预测完成！")
         return results
 
     def run(self) -> Any:
@@ -251,33 +257,33 @@ class ProjectManager:
         """打印项目摘要"""
         summary = self.get_summary()
 
-        print("\n" + "=" * 60)
-        print(f"📊 项目摘要: {summary['project_name']}")
-        print("=" * 60)
-        print(f"实验名称: {summary['experiment_name']}")
-        print(f"运行模式: {summary['mode']}")
-        print(f"输出目录: {summary['output_dir']}")
-        print(f"实验目录: {summary['experiment_dir']}")
-        print(f"模型类型: {summary.get('model_class', '未构建')}")
-        print(f"回调数量: {summary['callbacks_count']}")
-        print(f"日志器数量: {summary['loggers_count']}")
-        print(f"数据模块: {'是' if summary['has_datamodule'] else '否'}")
-        print(f"随机种子: {summary['seed']}")
-        print(f"确定性模式: {'是' if summary['deterministic'] else '否'}")
+        self._log_info("\n" + "=" * 60)
+        self._log_info(f"📊 项目摘要: {summary['project_name']}")
+        self._log_info("=" * 60)
+        self._log_info(f"实验名称: {summary['experiment_name']}")
+        self._log_info(f"运行模式: {summary['mode']}")
+        self._log_info(f"输出目录: {summary['output_dir']}")
+        self._log_info(f"实验目录: {summary['experiment_dir']}")
+        self._log_info(f"模型类型: {summary.get('model_class', '未构建')}")
+        self._log_info(f"回调数量: {summary['callbacks_count']}")
+        self._log_info(f"日志器数量: {summary['loggers_count']}")
+        self._log_info(f"数据模块: {'是' if summary['has_datamodule'] else '否'}")
+        self._log_info(f"随机种子: {summary['seed']}")
+        self._log_info(f"确定性模式: {'是' if summary['deterministic'] else '否'}")
 
         if summary["tags"]:
-            print(f"标签: {', '.join(summary['tags'])}")
+            self._log_info(f"标签: {', '.join(summary['tags'])}")
 
         if "trainer_info" in summary:
             trainer_info = summary["trainer_info"]
-            print(
+            self._log_info(
                 f"训练器配置: 最大轮数={trainer_info['max_epochs']}, "
                 f"设备数={trainer_info['num_devices']}, "
                 f"加速器={trainer_info['accelerator']}, "
                 f"精度={trainer_info['precision']}"
             )
 
-        print("=" * 60 + "\n")
+        self._log_info("=" * 60 + "\n")
 
 
 class ProjectBuilder:

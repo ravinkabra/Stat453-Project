@@ -1,7 +1,7 @@
 from pydantic.dataclasses import dataclass, Field
-from typing import Dict, Any, Literal, Union,Optional
+from typing import Dict, Any, Literal, Union, Optional
 
-# from torchmetrics import Metric
+from torchmetrics import Metric
 
 from ..base.config import BaseMetricParams
 
@@ -26,10 +26,31 @@ class MetricLogConfig:
         default="mean", description="Reduction function to apply to the logged values."
     )
 
+
 @dataclass
 class ManagedMetricConfig:
-    metric: Union[BaseMetricParams, Any] = Field(default_factory=BaseMetricParams)
-    log_config: MetricLogConfig = Field(default_factory=MetricLogConfig)
+    """
+    管理的指标配置类
+
+    支持多种metric配置方式：
+    1. BaseMetricParams: 标准配置驱动方式 (推荐用于配置文件)
+    2. Metric: 直接实例化方式 (推荐用于代码开发)
+    3. str: 简化字符串方式 (快速原型开发)
+    4. Dict[str, Any]: 原始字典方式 (向后兼容)
+    """
+
+    metric: Union[
+        BaseMetricParams,  # 标准配置方式
+        Metric,  # 直接实例化
+        str,  # 简化字符串
+        Dict[str, Any],  # 原始字典
+    ] = Field(
+        default_factory=BaseMetricParams, description="指标配置，支持多种输入方式"
+    )
+
+    log_config: MetricLogConfig = Field(
+        default_factory=MetricLogConfig, description="日志配置"
+    )
 
 
 @dataclass
