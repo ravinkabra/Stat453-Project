@@ -1,4 +1,4 @@
-from pydantic.dataclasses import dataclass, Field
+from pydantic.dataclasses import dataclass, Field,ConfigDict
 from typing import Dict, Any, Literal, Union, Optional
 
 from torchmetrics import Metric
@@ -27,25 +27,34 @@ class MetricLogConfig:
     )
 
 
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class ManagedMetricConfig:
     """
     管理的指标配置类
 
-    支持多种metric配置方式：
+    每个 ManagedMetricConfig 管理一组相关的指标，支持多种指标配置方式：
     1. BaseMetricParams: 标准配置驱动方式 (推荐用于配置文件)
     2. Metric: 直接实例化方式 (推荐用于代码开发)
     3. str: 简化字符串方式 (快速原型开发)
     4. Dict[str, Any]: 原始字典方式 (向后兼容)
+
+    示例：
+    prediction_metrics:
+      metrics:
+        train_accuracy: "torchmetrics.Accuracy"
+        val_accuracy: "torchmetrics.Accuracy"
+        precision: "torchmetrics.Precision"
+      log_config: {...}
+
+    value_recorders:
+      metrics:
+        loss: "torchmetrics.MeanMetric"
+        learning_rate: "torchmetrics.MeanMetric"
+      log_config: {...}
     """
 
-    metric: Union[
-        BaseMetricParams,  # 标准配置方式
-        Metric,  # 直接实例化
-        str,  # 简化字符串
-        Dict[str, Any],  # 原始字典
-    ] = Field(
-        default_factory=BaseMetricParams, description="指标配置，支持多种输入方式"
+    metrics: Dict[str, Union[BaseMetricParams, Metric, str, Dict[str, Any]]] = Field(
+        default_factory=dict, description="指标字典，键为指标名称，值为指标配置"
     )
 
     log_config: MetricLogConfig = Field(

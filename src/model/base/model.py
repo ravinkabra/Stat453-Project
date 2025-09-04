@@ -1,18 +1,23 @@
 import torch
 from pytorch_lightning import LightningModule
-from hydra.utils import instantiate
+from hydra.utils import instantiate, get_class
 from torchmetrics import MetricCollection
 from torchmetrics.classification import Accuracy, Precision, Recall
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Mapping, Union
 from pathlib import Path
 from .config import BaseModelConfig
+from ...metric._manager.manager import MetricManager
+from dataclasses import asdict
+import inspect
 
 
 class BaseModel(LightningModule, ABC):
     def __init__(self, config: BaseModelConfig):
         super().__init__()
+        self.save_hyperparameters()
         self.config = config
+        self.metric_manager = MetricManager(config.metric_manager)
 
     @abstractmethod
     def forward(self, batch):
@@ -21,45 +26,6 @@ class BaseModel(LightningModule, ABC):
         Should return the raw model output (logits).
         """
         raise NotImplementedError
-
-    @abstractmethod
-    def compute_loss(self, model_output, batch) -> torch.Tensor:
-        """
-        Abstract method to compute the loss. Must be implemented by subclasses.
-        """
-        raise NotImplementedError
-
-    def _step(self, batch, batch_idx):
-        """
-        Generic step for training, validation, and test.
-        Returns the loss and model output.
-        """
-        model_output = self.forward(batch)
-        loss = self.compute_loss(model_output, batch)
-        return loss, model_output
-
-    def training_step(self, batch, batch_idx):
-        loss, output = self._step(batch, batch_idx)
-        self.train_metrics.update(
-            output, batch["labels"]
-        )  # Assuming batch has 'labels'
-        self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log_dict(self.train_metrics, on_step=False, on_epoch=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        loss, output = self._step(batch, batch_idx)
-        self.val_metrics.update(output, batch["labels"])
-        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log_dict(self.val_metrics, on_step=False, on_epoch=True)
-        return loss
-
-    def test_step(self, batch, batch_idx):
-        loss, output = self._step(batch, batch_idx)
-        self.test_metrics.update(output, batch["labels"])
-        self.log("test_loss", loss, on_step=False, on_epoch=True)
-        self.log_dict(self.test_metrics, on_step=False, on_epoch=True)
-        return loss
 
     def configure_optimizers(self):
         """Instantiate and configure the optimizer and learning rate scheduler."""
@@ -74,7 +40,18 @@ class BaseModel(LightningModule, ABC):
             return optimizer
 
         # Instantiate scheduler, passing the created optimizer instance
-        scheduler = instantiate(self.config.lr_scheduler, optimizer=optimizer)
+        # scheduler = instantiate(self.config.lr_scheduler, optimizer=optimizer)
+        # valid_kwargs = {k: v for k, v in asdict(self.config.lr_scheduler).items() if k != "_target_"}
+        # scheduler = get_class(self.config.lr_scheduler._target_)(optimizer=optimizer, **valid_kwargs)
+        scheduler_cls = get_class(self.config.lr_scheduler._target_)
+        valid_kwargs = {
+            k: v
+            for k, v in asdict(self.config.lr_scheduler).items()
+            if k != "_target_"
+            and k != "optimizer"
+            and k in inspect.signature(scheduler_cls.__init__).parameters
+        }
+        scheduler = scheduler_cls(optimizer=optimizer, **valid_kwargs)
 
         # Build the scheduler dictionary for PyTorch Lightning
         # We extract only the relevant lightning-specific keys from the config
@@ -102,7 +79,6 @@ class BaseModel(LightningModule, ABC):
         """
         raise NotImplementedError
 
-
     @abstractmethod
     def save(
         self,
@@ -117,3 +93,11 @@ class BaseModel(LightningModule, ABC):
         Must be implemented by subclasses.
         """
         raise NotImplementedError
+
+    def _training_forward(self, inputs):
+        """训练时的前向传播，子类可重写处理细节差异"""
+        return self.forward(inputs)
+
+    def _inference_forward(self, inputs):
+        """推理时的前向传播，子类可重写处理细节差异"""
+        return self.forward(inputs)

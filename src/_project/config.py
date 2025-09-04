@@ -2,14 +2,18 @@
 🔧 项目配置 - 统整所有组件的配置类
 """
 
-from pydantic.dataclasses import dataclass
+from pydantic.dataclasses import dataclass, ConfigDict
 from pydantic import Field
 from typing import Dict, Any, Optional, List, Literal
 
 from .._logger import UnionLoggerParams
+from .._datamodule import UnionDataModuleConfig
+from .._trainer import UnionTrainerConfig
+from ..callback import UnionCallbackConfig
+from ..model import UnionModelConfig
 
 
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class ProjectConfig:
     """
     项目级配置类 - 统一管理整个训练项目的配置
@@ -33,23 +37,23 @@ class ProjectConfig:
     )
 
     # 核心组件配置
-    model: Dict[str, Any] = Field(description="模型配置")
-    datamodule: Optional[Dict[str, Any]] = Field(
+    model: UnionModelConfig = Field(description="模型配置")
+    datamodule: Optional[UnionDataModuleConfig] = Field(
         default=None, description="数据模块配置"
     )
 
     # PyTorch Lightning Trainer 配置
-    trainer: Optional[Dict[str, Any]] = Field(
+    trainer: Optional[UnionTrainerConfig] = Field(
         default=None, description="PyTorch Lightning Trainer 原生配置"
     )
 
     # 回调配置
-    callbacks: Optional[Dict[str, Dict[str, Any]]] = Field(
+    callbacks: Optional[dict[str, UnionCallbackConfig]] = Field(
         default=None, description="回调配置字典，key为回调名称"
     )
 
     # 日志器配置 - 使用类型化的 logger 配置
-    logging: Optional[Dict[str, UnionLoggerParams]] = Field(
+    loggers: Optional[Dict[str, UnionLoggerParams]] = Field(
         default=None, description="日志器配置字典，key为日志器名称，value为类型化配置"
     )
 

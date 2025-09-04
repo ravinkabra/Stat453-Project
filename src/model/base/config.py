@@ -6,7 +6,7 @@ from ..._optimizer import UnionOptimizerParams
 from ..._lr_scheduler import UnionLRSchedulerParams
 from ..._optimizer.base import BaseOptimizerParams
 from ..._lr_scheduler.base import BaseLRSchedulerParams
-from ...metric._manager import MetricManagerConfig, MetricManager
+from ...metric._manager import MetricManagerConfig
 
 
 @dataclass
@@ -29,4 +29,4 @@ class BaseModelConfig:
         description="学习率调度器配置：需与 optimizer 结构匹配",
     )
 
-    metrics: Optional[MetricManagerConfig] = Field(default_factory=MetricManagerConfig)
+    metric_manager: Optional[MetricManagerConfig] = Field(default_factory=MetricManagerConfig)

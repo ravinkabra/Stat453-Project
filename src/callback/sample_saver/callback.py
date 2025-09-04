@@ -10,6 +10,8 @@ import numpy as np
 from datetime import datetime
 from .config import TrainingSampleSaverCallbackConfig, SaveKeyConfig
 
+from typing import overload
+
 
 class TrainingSampleSaverCallback(Callback):
     """
@@ -28,11 +30,94 @@ class TrainingSampleSaverCallback(Callback):
     - 支持目录层级结构（epoch/step 目录）
     """
 
-    def __init__(self, config: TrainingSampleSaverCallbackConfig):
+    @overload
+    def __init__(self, config: TrainingSampleSaverCallbackConfig) -> None: ...
+    @overload
+    def __init__(
+        self,
+        *,
+        save_dir: str = "./training_samples",
+        save_keys: Dict[str, SaveKeyConfig] = ...,
+        default_save_frequency: int = 100,
+        default_max_samples: int = 4,
+        default_phases: List[Literal["train", "val", "test"]] = ...,
+        use_epoch_dirs: bool = True,
+        use_step_dirs: bool = False,
+        dir_structure: Literal["flat", "epoch", "step", "epoch_step"] = "epoch",
+        auto_create_dirs: bool = True,
+        add_timestamp: bool = True,
+        add_step_info: bool = True,
+    ) -> None: ...
+
+    def __init__(
+        self,
+        config: TrainingSampleSaverCallbackConfig = None,
+        *,
+        save_dir: str = "./training_samples",
+        save_keys: Dict[str, SaveKeyConfig] = None,
+        default_save_frequency: int = 100,
+        default_max_samples: int = 4,
+        default_phases: List[Literal["train", "val", "test"]] = None,
+        use_epoch_dirs: bool = True,
+        use_step_dirs: bool = False,
+        dir_structure: Literal["flat", "epoch", "step", "epoch_step"] = "epoch",
+        auto_create_dirs: bool = True,
+        add_timestamp: bool = True,
+        add_step_info: bool = True,
+    ):
         """
+        初始化 TrainingSampleSaverCallback
+
         Args:
-            config: TrainingSampleSaverCallbackConfig 配置对象
+            config: TrainingSampleSaverCallbackConfig 配置对象。
+                   如果提供此参数，将使用配置对象初始化，其他参数将被忽略。
+                   示例: TrainingSampleSaverCallback(config=my_config)
+
+            save_dir: 保存根目录。默认为 "./training_samples"
+            save_keys: 保存配置字典。默认为空字典
+            default_save_frequency: 默认保存频率（每N个batch保存一次）。默认为 100
+            default_max_samples: 默认每次最多保存的样本数。默认为 4
+            default_phases: 默认在哪些阶段保存。默认为 ["val"]
+            use_epoch_dirs: 是否按 epoch 创建子目录。默认为 True
+            use_step_dirs: 是否按 step 创建子目录。默认为 False
+            dir_structure: 目录结构。默认为 "epoch"
+            auto_create_dirs: 是否自动创建保存目录。默认为 True
+            add_timestamp: 是否在文件名中添加时间戳。默认为 True
+            add_step_info: 是否在文件名中添加步数信息。默认为 True
+
+        使用示例:
+            # 方式1: 使用配置对象（推荐用于复杂配置）
+            config = TrainingSampleSaverCallbackConfig(...)
+            callback = TrainingSampleSaverCallback(config=config)
+
+            # 方式2: 直接传入参数（适合简单配置）
+            callback = TrainingSampleSaverCallback(
+                save_dir="./my_samples",
+                save_keys={"output": SaveKeyConfig(...)},
+                default_save_frequency=50
+            )
         """
+        if config is None:
+            # 从参数构造配置对象
+            if save_keys is None:
+                save_keys = {}
+            if default_phases is None:
+                default_phases = ["val"]
+
+            config = TrainingSampleSaverCallbackConfig(
+                save_dir=save_dir,
+                save_keys=save_keys,
+                default_save_frequency=default_save_frequency,
+                default_max_samples=default_max_samples,
+                default_phases=default_phases,
+                use_epoch_dirs=use_epoch_dirs,
+                use_step_dirs=use_step_dirs,
+                dir_structure=dir_structure,
+                auto_create_dirs=auto_create_dirs,
+                add_timestamp=add_timestamp,
+                add_step_info=add_step_info,
+            )
+
         self.config = config
         self.save_dir = Path(config.save_dir)
 
@@ -56,7 +141,9 @@ class TrainingSampleSaverCallback(Callback):
 
         result = data
         for key in keys:
-            if isinstance(result, dict) and key in result:
+            if hasattr(result, key):
+                result = getattr(result, key)
+            elif isinstance(result, dict) and key in result:
                 result = result[key]
             else:
                 raise KeyError(f"Key path {keys} not found in data. Failed at '{key}'")

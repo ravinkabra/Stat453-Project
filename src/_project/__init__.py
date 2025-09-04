@@ -26,7 +26,7 @@ from .config import (
     ProjectConfig,
     get_unet_project_config,
     get_llm_project_config,
-    get_minimal_project_config,
+    # get_minimal_project_config,
 )
 
 __all__ = [

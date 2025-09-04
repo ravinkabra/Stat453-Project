@@ -1,0 +1,68 @@
+# MetricManager 配置示例
+# 展示新的分组设计
+
+_target_: src.metric._manager.manager.MetricManager
+
+metrics:
+  # 预测指标组 - 用于模型性能评估
+  prediction_metrics:
+    metrics:
+      train_accuracy:
+        _target_: torchmetrics.Accuracy
+        task: multiclass
+        num_classes: 10
+      val_accuracy:
+        _target_: torchmetrics.Accuracy  
+        task: multiclass
+        num_classes: 10
+      precision:
+        _target_: torchmetrics.Precision
+        task: multiclass
+        num_classes: 10
+        average: macro
+      recall:
+        _target_: torchmetrics.Recall
+        task: multiclass
+        num_classes: 10
+        average: macro
+      f1_score:
+        _target_: torchmetrics.F1Score
+        task: multiclass
+        num_classes: 10
+        average: macro
+    log_config:
+      phase: ["train", "val"]
+      frequency: 1
+      prog_bar: true
+      on_step: true
+      on_epoch: true
+      reduce_fx: mean
+
+  # 值记录器组 - 用于记录标量值
+  value_recorders:
+    metrics:
+      loss: torchmetrics.MeanMetric
+      learning_rate: torchmetrics.MeanMetric
+      grad_norm: torchmetrics.MeanMetric
+      epoch_time: torchmetrics.MeanMetric
+    log_config:
+      phase: ["train", "val", "test"]
+      frequency: 1
+      prog_bar: false
+      on_step: true
+      on_epoch: false
+      reduce_fx: mean
+
+  # 系统监控组 - 用于系统状态监控
+  system_monitors:
+    metrics:
+      gpu_memory: torchmetrics.MaxMetric
+      cpu_usage: torchmetrics.MeanMetric
+      batch_size: torchmetrics.MeanMetric
+    log_config:
+      phase: ["train"]
+      frequency: 10  # 每10步记录一次
+      prog_bar: false
+      on_step: true
+      on_epoch: false
+      reduce_fx: mean

@@ -57,6 +57,7 @@ class BaseDataModule(LightningDataModule, ABC):
             pin_memory=self.config.train.pin_memory,
             drop_last=self.config.train.drop_last,
             collate_fn=self.train_dataset.collate_fn,
+            persistent_workers=self.config.train.persistent_workers,
         )
 
     def val_dataloader(self) -> DataLoader:
@@ -75,6 +76,7 @@ class BaseDataModule(LightningDataModule, ABC):
             pin_memory=self.config.val.pin_memory,
             drop_last=self.config.val.drop_last,
             collate_fn=self.val_dataset.collate_fn,
+            persistent_workers=self.config.val.persistent_workers,
         )
 
     def test_dataloader(self) -> DataLoader:
@@ -93,6 +95,7 @@ class BaseDataModule(LightningDataModule, ABC):
             pin_memory=self.config.test.pin_memory,
             drop_last=self.config.test.drop_last,
             collate_fn=self.test_dataset.collate_fn,
+            persistent_workers=self.config.test.persistent_workers,
         )
 
     def predict_dataloader(self):
@@ -113,4 +116,5 @@ class BaseDataModule(LightningDataModule, ABC):
             pin_memory=self.config.predict.pin_memory,
             drop_last=self.config.predict.drop_last,
             collate_fn=self.predict_dataset.collate_fn,
+            persistent_workers=self.config.predict.persistent_workers,
         )

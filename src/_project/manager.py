@@ -12,14 +12,14 @@
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
-from hydra.utils import instantiate
+from hydra.utils import instantiate, get_class
 from pytorch_lightning import Trainer, LightningModule, LightningDataModule
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.loggers import Logger
 from pytorch_lightning.utilities import rank_zero_only
 
 from .config import ProjectConfig
-
+from src._trainer.base.config import BaseTrainerConfig
 
 # 创建 logger
 logger = logging.getLogger(__name__)
@@ -71,14 +71,16 @@ class ProjectManager:
     def build_model(self) -> LightningModule:
         """构建模型"""
         if self.model is None:
-            self.model = instantiate(self.config.model)
+            model_cls = get_class(self.config.model._target_)
+            self.model = model_cls(self.config.model)
             self._log_info(f"✓ 模型已构建: {type(self.model).__name__}")
         return self.model
 
     def build_datamodule(self) -> Optional[LightningDataModule]:
         """构建数据模块"""
         if self.config.datamodule and self.datamodule is None:
-            self.datamodule = instantiate(self.config.datamodule)
+            datamodule_cls = get_class(self.config.datamodule._target_)
+            self.datamodule = datamodule_cls(self.config.datamodule)
             self._log_info(f"✓ 数据模块已构建: {type(self.datamodule).__name__}")
         return self.datamodule
 
@@ -86,18 +88,27 @@ class ProjectManager:
         """构建回调列表"""
         if not self.callbacks and self.config.callbacks:
             for callback_name, callback_config in self.config.callbacks.items():
-                callback = instantiate(callback_config)
+                try: 
+                    callback = instantiate(callback_config)
+                except Exception as e:
+                    from dataclasses import asdict
+                    callback_cls = get_class(callback_config._target_)
+                    callback = callback_cls(**{k: v for k, v in asdict(callback_config).items() if k != "_target_"})
                 self.callbacks.append(callback)
-                self._log_info(f"✓ 回调已构建: {callback_name} -> {type(callback).__name__}")
+                self._log_info(
+                    f"✓ 回调已构建: {callback_name} -> {type(callback).__name__}"
+                )
         return self.callbacks
 
     def build_loggers(self) -> List[Logger]:
         """构建日志器列表"""
-        if not self.loggers and self.config.logging:
-            for logger_name, logger_config in self.config.logging.items():
+        if not self.loggers and self.config.loggers:
+            for logger_name, logger_config in self.config.loggers.items():
                 logger = instantiate(logger_config)
                 self.loggers.append(logger)
-                self._log_info(f"✓ 日志器已构建: {logger_name} -> {type(logger).__name__}")
+                self._log_info(
+                    f"✓ 日志器已构建: {logger_name} -> {type(logger).__name__}"
+                )
         return self.loggers
 
     def build_trainer(self) -> Trainer:
@@ -112,13 +123,16 @@ class ProjectManager:
             loggers = self.build_loggers()
 
             # 获取基础训练器配置
-            trainer_config = self.config.trainer.copy() if self.config.trainer else {}
-
+            if isinstance(self.config.trainer, dict):
+                trainer_config = self.config.trainer.copy() if self.config.trainer else {}
+            elif isinstance(self.config.trainer, BaseTrainerConfig):
+                from dataclasses import asdict
+                trainer_config = asdict(self.config.trainer)
             # 自动添加组件
             if callbacks:
                 trainer_config["callbacks"] = callbacks
             if loggers:
-                trainer_config["logger"] = loggers if len(loggers) > 1 else loggers[0]
+                trainer_config["logger"] = loggers #if len(loggers) > 1 else loggers[0]
 
             # 设置默认输出目录（如果未指定）
             if "default_root_dir" not in trainer_config:
@@ -130,6 +144,7 @@ class ProjectManager:
 
             # 创建原生 PyTorch Lightning Trainer
             self.trainer = Trainer(**trainer_config)
+
             self._log_info(
                 f"✓ PyTorch Lightning Trainer 已构建: {len(callbacks)} 个回调, {len(loggers)} 个日志器"
             )
@@ -284,6 +299,10 @@ class ProjectManager:
             )
 
         self._log_info("=" * 60 + "\n")
+
+    @rank_zero_only
+    def _log_info(self, message: str) -> None:
+        logger.info(message)
 
 
 class ProjectBuilder:

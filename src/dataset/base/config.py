@@ -11,6 +11,7 @@ class BaseDatasetConfig:
     _target_: Literal["src.dataset.base.dataset.BaseDataset"] = Field(
         default="src.dataset.base.dataset.BaseDataset", description="Dataset class"
     )
+    # stage: str = Field(default="train", description="Stage (train/val/test/predict)")
     batch_size: int = Field(default=32, description="Batch size for the dataset")
     num_workers: int = Field(
         default=4, description="Number of workers for data loading"
@@ -24,4 +25,7 @@ class BaseDatasetConfig:
     )
     sampler: Optional[Union[str, Dict[str, Any]]] = Field(
         default=None, description="Sampler for the dataset"
+    )
+    persistent_workers: bool = Field(
+        default=False, description="Whether to use persistent workers for data loading"
     )
