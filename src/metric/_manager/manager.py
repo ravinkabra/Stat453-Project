@@ -75,7 +75,7 @@ class MetricManager(torch.nn.Module):
     def update(
         self,
         model: LightningModule,
-        current_step: int,
+        batch_idx: int,
         group_name: str = None,
         preds=None,
         target=None,
@@ -106,11 +106,11 @@ class MetricManager(torch.nn.Module):
 
         for current_group_name, group_metrics in groups_to_update:
             log_config = self.log_configs[current_group_name]
-            current_global_step = model.global_step
+            # current_global_step = model.global_step
             # if current_phase not in log_config.phase:
             #     continue
 
-            if (current_step + 1) % log_config.update_frequency != 0:
+            if (batch_idx + 1) % log_config.update_frequency != 0:
                 continue
 
             for metric_name, metric in group_metrics.items():
@@ -158,83 +158,6 @@ class MetricManager(torch.nn.Module):
                                 f"Warning: Failed to update {current_group_name}/{metric_name}: {e}"
                             )
 
-    # def forward(
-    #     self,
-    #     group_name: str = None,
-    #     preds=None,
-    #     target=None,
-    #     **kwargs,
-    # ) -> None:
-    #     """
-    #     调用指标的 forward 方法（无返回值版本）
-
-    #     Args:
-    #         group_name: 分组名称，如果为 None 则调用所有分组
-    #         preds: 预测值 (可选，某些指标不需要)
-    #         target: 目标值 (可选，某些指标不需要)
-    #         **kwargs: 其他参数，支持：
-    #             - 指标名=值: 直接为特定指标提供值
-    #             - 其他参数会传递给需要额外参数的指标
-    #     """
-    #     # 确定要调用的分组
-    #     if group_name is None:
-    #         # 调用所有分组
-    #         groups_to_forward = self.metrics.items()
-    #     else:
-    #         # 调用特定分组
-    #         if group_name not in self.metrics:
-    #             raise ValueError(
-    #                 f"Group '{group_name}' not found. Available groups: {list(self.metrics.keys())}"
-    #             )
-    #         groups_to_forward = [(group_name, self.metrics[group_name])]
-
-    #     for current_group_name, group_metrics in groups_to_forward:
-    #         for metric_name, metric in group_metrics.items():
-    #             metric: Metric
-
-    #             # 优先使用指标名称匹配的值
-    #             if metric_name in kwargs:
-    #                 try:
-    #                     metric.forward(kwargs[metric_name])
-    #                     continue
-    #                 except Exception as e:
-    #                     print(
-    #                         f"Warning: Failed to forward {current_group_name}/{metric_name} with direct value: {e}"
-    #                     )
-
-    #             # 使用标准的 preds/target
-    #             try:
-    #                 if preds is not None and target is not None:
-    #                     metric.forward(preds, target)
-    #                 elif preds is not None:
-    #                     metric.forward(preds)
-    #                 else:
-    #                     # 跳过需要输入但没有提供输入的指标
-    #                     continue
-    #             except TypeError:
-    #                 # 如果失败，尝试带额外参数
-    #                 metric_signature = inspect.signature(metric.forward)
-    #                 if (
-    #                     len(metric_signature.parameters) > 1
-    #                 ):  # forward 通常至少有 self 参数
-    #                     # 只传入metric需要的参数
-    #                     valid_kwargs = {
-    #                         k: v
-    #                         for k, v in kwargs.items()
-    #                         if k in metric_signature.parameters
-    #                     }
-    #                     try:
-    #                         if preds is not None and target is not None:
-    #                             metric.forward(preds, target, **valid_kwargs)
-    #                         elif preds is not None:
-    #                             metric.forward(preds, **valid_kwargs)
-    #                         else:
-    #                             metric.forward(**valid_kwargs)
-    #                     except Exception as e:
-    #                         print(
-    #                             f"Warning: Failed to forward {current_group_name}/{metric_name}: {e}"
-    #                         )
-
     def reset(self, group_name: str = None) -> None:
         """
         重置指标状态
@@ -259,7 +182,7 @@ class MetricManager(torch.nn.Module):
                 metric.reset()
 
     def log(
-        self, model: "LightningModule", phase: str = "train", current_step: int = 0
+        self, model: "LightningModule", phase: str = "train", batch_idx: int = 0
     ) -> None:
         """Log all metrics to the Lightning model."""
         for group_name, group_metrics in self.metrics.items():
@@ -268,7 +191,7 @@ class MetricManager(torch.nn.Module):
             if phase not in log_config.phase:
                 continue
 
-            if (current_step + 1) % log_config.compute_frequency != 0:
+            if (batch_idx + 1) % log_config.compute_frequency != 0:
                 continue
 
             if not log_config.on_step and not log_config.on_epoch:
@@ -285,10 +208,10 @@ class MetricManager(torch.nn.Module):
                         on_epoch=False,
                         prog_bar=log_config.prog_bar,
                         reduce_fx=log_config.reduce_fx,
+                        sync_dist=log_config.sync_dist,
                         logger=True,
                     )
                 if log_config.on_epoch and metric_computed is not None:
-                    print(metric_computed,metric_name,type(metric))
                     model.log(
                         f"{phase}/epoch/{metric_name}",
                         metric_computed,
@@ -296,10 +219,9 @@ class MetricManager(torch.nn.Module):
                         on_epoch=log_config.on_epoch,
                         prog_bar=log_config.prog_bar,
                         reduce_fx=log_config.reduce_fx,
+                        sync_dist=log_config.sync_dist,
                         logger=True,
                     )
-                    metric.reset()
-                    
 
     def get_metric(self, group_name: str, metric_name: str) -> Metric:
         """

@@ -11,6 +11,7 @@ class BaseDataset(Dataset, ABC):
     def __init__(self, config: BaseDatasetConfig):
         self.config = config
 
+    @abstractmethod
     def setup(self, stage: Optional[str] = None):
         """Setup the dataset for train/validate/test/predict."""
         pass

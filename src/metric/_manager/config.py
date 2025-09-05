@@ -27,6 +27,10 @@ class MetricLogConfig:
     logger: bool = Field(default=True, description="Whether to log to the logger.")
     on_step: bool = Field(default=True, description="Whether to log on step.")
     on_epoch: bool = Field(default=True, description="Whether to log on epoch.")
+    sync_dist: bool = Field(
+        default=True,
+        description="Whether to synchronize the metric across devices in distributed training.",
+    )
     reduce_fx: Optional[Literal["mean", "sum", "max", "min"]] = Field(
         default="mean", description="Reduction function to apply to the logged values."
     )

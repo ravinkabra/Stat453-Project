@@ -1,169 +1,173 @@
 # Model Training Framework
 
-一个基于 PyTorch Lightning 和 Hydra 的模块化深度学习训练框架，旨在提供灵活、可扩展、易于配置的机器学习模型训练解决方案。
+[English](README.md) | [中文](README_zh.md)
 
-## 🏗️ 架构概览
+A modular deep learning training framework based on PyTorch Lightning and Hydra, designed to provide flexible, scalable, and easy-to-configure machine learning model training solutions.
 
-本框架采用高度模块化的设计，将深度学习训练过程中的各个组件进行解耦，每个组件都遵循统一的接口设计和配置管理模式。
+## 🏗️ Architecture Overview
+
+This framework adopts a highly modular design, decoupling various components in the deep learning training process, with each component following unified interface design and configuration management patterns.
+
+For detailed folder and file specifications, please refer to: [docs/architecture.md](docs/architecture.md).
 
 ```
 src/
-├── model/           # 模型定义层 - 整合网络、优化器、调度器等
-├── network/         # 网络架构层 - 纯粹的神经网络定义
-├── optimizer/       # 优化器层 - 各种优化算法的封装
-├── lr_scheduler/    # 学习率调度器层 - 学习率调整策略
-├── metric/          # 指标管理层 - 训练过程中的指标计算和记录
-├── callback/        # 回调函数层 - 训练过程中的自定义行为
-└── datamodule/      # 数据模块层 - 数据加载和预处理
+├── model/           # Model definition layer - integrates network, optimizer, scheduler, etc.
+├── network/         # Network architecture layer - pure neural network definitions
+├── optimizer/       # Optimizer layer - encapsulation of various optimization algorithms
+├── lr_scheduler/    # Learning rate scheduler layer - learning rate adjustment strategies
+├── metric/          # Metric management layer - metric calculation and recording during training
+├── callback/        # Callback layer - custom behaviors during training
+└── datamodule/      # Data module layer - data loading and preprocessing
 ```
 
-## 🎯 核心设计理念
+## 🎯 Core Design Philosophy
 
-### 1. 分层架构设计
+### 1. Layered Architecture Design
 
-框架采用清晰的分层架构，每层负责不同的职责：
+The framework adopts a clear layered architecture, with each layer responsible for different duties:
 
-- **Model Layer**: 最高层抽象，集成所有组件，定义训练流程
-- **Network Layer**: 网络架构定义，专注于模型结构
-- **Component Layer**: 各功能组件（优化器、调度器、指标等）
-- **Data Layer**: 数据处理和加载
+- **Model Layer**: Highest level abstraction, integrates all components, defines training flow
+- **Network Layer**: Network architecture definition, focuses on model structure
+- **Component Layer**: Various functional components (optimizer, scheduler, metrics, etc.)
+- **Data Layer**: Data processing and loading
 
-### 2. 配置驱动开发
+### 2. Configuration-Driven Development
 
-- 使用 **Pydantic** 进行类型安全的配置管理
-- 集成 **Hydra** 支持配置文件组合和命令行覆盖
-- 每个组件都有对应的配置类，支持运行时实例化
+- Uses **Pydantic** for type-safe configuration management
+- Integrates **Hydra** to support configuration file composition and command-line overrides
+- Each component has a corresponding configuration class, supporting runtime instantiation
 
-### 3. 插件化扩展机制
+### 3. Plugin Extension Mechanism
 
-- 基于抽象基类的设计，确保接口一致性
-- 工厂模式的组件实例化（通过 `_target_` 字段）
-- 支持热插拔式组件替换
+- Design based on abstract base classes to ensure interface consistency
+- Factory pattern component instantiation (via `_target_` field)
+- Supports hot-swappable component replacement
 
-## 🧩 核心组件详解
+## 🧩 Core Components Details
 
-### Model 模块
+### Model Module
 
-**设计理念**: Model 是框架的核心协调者，继承自 PyTorch Lightning 的 `LightningModule`，负责整合所有组件并定义训练流程。
+**Design Philosophy**: Model is the core coordinator of the framework, inheriting from PyTorch Lightning's `LightningModule`, responsible for integrating all components and defining the training flow.
 
 ```python
-# 抽象基类设计
+# Abstract base class design
 class BaseModel(LightningModule, ABC):
     @abstractmethod
     def forward(self, batch):
-        """定义前向传播逻辑"""
+        """Define forward propagation logic"""
         
     @abstractmethod
     def compute_loss(self, model_output, batch):
-        """定义损失计算逻辑"""
+        """Define loss computation logic"""
         
     @abstractmethod
     def decode(self, model_output):
-        """定义输出解码逻辑（用于可解释性）"""
+        """Define output decoding logic (for interpretability)"""
 ```
 
-**核心特性**:
-- 统一的训练/验证/测试步骤模板
-- 自动配置优化器和学习率调度器
-- 集成指标管理系统
-- 支持分布式训练（DDP）
+**Core Features**:
+- Unified training/validation/testing step templates
+- Automatic optimizer and learning rate scheduler configuration
+- Integrated metric management system
+- Supports distributed training (DDP)
 
-### Network 模块
+### Network Module
 
-**设计理念**: Network 专注于纯粹的神经网络架构定义，与训练逻辑解耦。
+**Design Philosophy**: Network focuses on pure neural network architecture definition, decoupled from training logic.
 
 ```python
-# 网络组件独立于训练逻辑
+# Network components independent of training logic
 class BaseNetwork(torch.nn.Module, ABC):
     @abstractmethod
     def forward(self, x):
-        """纯粹的网络前向传播"""
+        """Pure network forward propagation"""
 ```
 
-### Metric 管理系统
+### Metric Management System
 
-**设计理念**: 提供灵活的指标计算、记录和可视化管理。
+**Design Philosophy**: Provides flexible metric calculation, recording, and visualization management.
 
-**核心组件**:
+**Core Components**:
 ```python
 class MetricManager(torch.nn.Module):
-    """DDP-aware 的指标管理器"""
+    """DDP-aware metric manager"""
     
     def __init__(self, config: MetricManagerConfig):
-        # 使用 ModuleDict 确保 DDP 兼容性
+        # Use ModuleDict to ensure DDP compatibility
         self.metrics = torch.nn.ModuleDict()
         self.log_configs = {}
 ```
 
-**特性**:
-- **DDP 兼容**: 使用 `ModuleDict` 确保分布式训练兼容性
-- **灵活配置**: 支持不同阶段（train/val/test）的指标记录
-- **可定制日志**: 支持步级别和epoch级别的日志记录
-- **自动聚合**: 支持多种聚合方式（mean、sum、max、min）
+**Features**:
+- **DDP Compatible**: Uses `ModuleDict` to ensure distributed training compatibility
+- **Flexible Configuration**: Supports metrics recording for different stages (train/val/test)
+- **Customizable Logging**: Supports step-level and epoch-level logging
+- **Automatic Aggregation**: Supports multiple aggregation methods (mean, sum, max, min)
 
-### Callback 系统
+### Callback System
 
-**设计理念**: 基于 PyTorch Lightning 的回调机制，提供训练过程中的自定义行为。
+**Design Philosophy**: Based on PyTorch Lightning's callback mechanism, provides custom behaviors during training.
 
-**示例 - OutputLoggerCallback**:
+**Example - OutputLoggerCallback**:
 ```python
 class OutputLoggerCallback(Callback):
-    """输出记录回调，用于训练过程中的模型输出可视化"""
+    """Output logging callback for model output visualization during training"""
     
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        # 解码模型输出并记录
+        # Decode model output and record
         decoded_preds = pl_module.decode(outputs["model_output"])
 ```
 
-### 配置管理系统
+### Configuration Management System
 
-**设计理念**: 使用 Pydantic + Hydra 构建类型安全、灵活的配置系统。
+**Design Philosophy**: Uses Pydantic + Hydra to build a type-safe, flexible configuration system.
 
 ```python
 @dataclass
 class BaseModelConfig:
-    _target_: str = "src.model.base.model.BaseModel"  # 运行时实例化目标
+    _target_: str = "src.model.base.model.BaseModel"  # Runtime instantiation target
     optimizer: Optional[UnionOptimizerParams] = None
     lr_scheduler: Optional[UnionLRSchedulerParams] = None
     metrics: Optional[MetricManagerConfig] = None
 ```
 
-**特性**:
-- **类型安全**: Pydantic 提供运行时类型检查
-- **组合式配置**: Hydra 支持配置文件组合和覆盖
-- **工厂模式**: 通过 `_target_` 字段支持动态实例化
+**Features**:
+- **Type Safety**: Pydantic provides runtime type checking
+- **Compositional Configuration**: Hydra supports configuration file composition and overrides
+- **Factory Pattern**: Supports dynamic instantiation via `_target_` field
 
-## 🔄 数据流和执行流程
+## 🔄 Data Flow and Execution Process
 
-### 1. 配置阶段
+### 1. Configuration Phase
 ```
 config.yaml → Hydra → Pydantic Config Classes → Component Instantiation
 ```
 
-### 2. 训练阶段
+### 2. Training Phase
 ```
 DataModule → Model.forward() → Loss Computation → 
 MetricManager.update() → Optimizer.step() → Callback.on_*()
 ```
 
-### 3. 指标记录
+### 3. Metric Recording
 ```
 Metric Computation → MetricManager.log() → Lightning Logger → 
 External Tools (W&B, TensorBoard)
 ```
 
-## 🚀 使用示例
+## 🚀 Usage Examples
 
-### 基本使用流程
+### Basic Usage Flow
 
-1. **定义你的网络架构**:
+1. **Define your network architecture**:
 ```python
 class MyNetwork(BaseNetwork):
     def forward(self, x):
         return self.layers(x)
 ```
 
-2. **实现你的模型**:
+2. **Implement your model**:
 ```python
 class MyModel(BaseModel):
     def forward(self, batch):
@@ -176,7 +180,7 @@ class MyModel(BaseModel):
         return torch.argmax(output, dim=-1)
 ```
 
-3. **配置训练参数**:
+3. **Configure training parameters**:
 ```yaml
 # config.yaml
 model:
@@ -192,7 +196,7 @@ model:
         num_classes: 10
 ```
 
-4. **开始训练**:
+4. **Start training**:
 ```python
 # main.py
 from hydra.utils import instantiate
@@ -202,70 +206,70 @@ trainer = pl.Trainer()
 trainer.fit(model, datamodule)
 ```
 
-## 🎨 扩展指南
+## 🎨 Extension Guide
 
-### 添加新的优化器
-1. 在 `src/optimizer/` 下创建新模块
-2. 继承基类并实现必要方法
-3. 更新配置类型定义
+### Adding a New Optimizer
+1. Create a new module under `src/optimizer/`
+2. Inherit from base class and implement necessary methods
+3. Update configuration type definitions
 
-### 添加新的指标
-1. 使用 torchmetrics 或自定义指标类
-2. 在 MetricManager 配置中添加新指标
-3. 配置记录策略
+### Adding a New Metric
+1. Use torchmetrics or custom metric class
+2. Add new metric in MetricManager configuration
+3. Configure recording strategy
 
-### 添加新的回调
-1. 继承 `pytorch_lightning.Callback`
-2. 实现相关的钩子函数
-3. 在训练器中注册回调
+### Adding a New Callback
+1. Inherit from `pytorch_lightning.Callback`
+2. Implement relevant hook functions
+3. Register callback in trainer
 
-## 🔧 技术特性
+## 🔧 Technical Features
 
-- **🔥 PyTorch Lightning**: 自动处理分布式训练、检查点、日志等
-- **⚙️ Hydra**: 强大的配置管理和实验组织
-- **📊 Type Safety**: Pydantic 提供运行时类型检查
-- **🔌 Plugin Architecture**: 高度模块化，易于扩展
-- **📈 DDP Ready**: 原生支持分布式数据并行训练
-- **🎯 Metric Management**: 统一的指标计算和记录系统
+- **🔥 PyTorch Lightning**: Automatically handles distributed training, checkpoints, logging, etc.
+- **⚙️ Hydra**: Powerful configuration management and experiment organization
+- **📊 Type Safety**: Pydantic provides runtime type checking
+- **🔌 Plugin Architecture**: Highly modular, easy to extend
+- **📈 DDP Ready**: Native support for distributed data parallel training
+- **🎯 Metric Management**: Unified metric calculation and recording system
 
-## 📁 项目结构
+## 📁 Project Structure
 
 ```
 model-training-framework/
-├── src/                        # 源代码目录
-│   ├── model/                  # 模型定义
-│   │   ├── base/              # 基础抽象类
-│   │   └── example/           # 示例实现
-│   ├── network/               # 网络架构
-│   ├── optimizer/             # 优化器组件
-│   ├── lr_scheduler/          # 学习率调度器
-│   ├── metric/                # 指标管理
-│   │   ├── _manager/         # 指标管理器
-│   │   └── base/             # 基础指标类
-│   ├── callback/              # 回调函数
-│   └── datamodule/           # 数据模块
-├── config/                     # 配置文件目录
-├── main.py                    # 训练入口点
-├── pyproject.toml             # 项目配置
-└── README.md                  # 项目文档
+├── src/                        # Source code directory
+│   ├── model/                  # Model definitions
+│   │   ├── base/              # Base abstract classes
+│   │   └── example/           # Example implementations
+│   ├── network/               # Network architectures
+│   ├── optimizer/             # Optimizer components
+│   ├── lr_scheduler/          # Learning rate schedulers
+│   ├── metric/                # Metric management
+│   │   ├── _manager/         # Metric manager
+│   │   └── base/             # Base metric classes
+│   ├── callback/              # Callback functions
+│   └── datamodule/           # Data modules
+├── config/                     # Configuration files directory
+├── main.py                    # Training entry point
+├── pyproject.toml             # Project configuration
+└── README.md                  # Project documentation
 ```
 
-## 🎯 设计优势
+## 🎯 Design Advantages
 
-1. **高内聚，低耦合**: 每个模块职责单一，依赖关系清晰
-2. **配置驱动**: 无需修改代码即可调整训练策略
-3. **易于测试**: 模块化设计便于单元测试
-4. **生产就绪**: 支持分布式训练和实验管理
-5. **可扩展性**: 插件化架构，易于添加新功能
+1. **High Cohesion, Low Coupling**: Each module has a single responsibility, clear dependencies
+2. **Configuration-Driven**: Adjust training strategies without modifying code
+3. **Easy to Test**: Modular design facilitates unit testing
+4. **Production Ready**: Supports distributed training and experiment management
+5. **Extensibility**: Plugin architecture, easy to add new features
 
-## 🔮 后续规划
+## 🔮 Future Plans
 
-- [ ] 完善数据模块实现
-- [ ] 添加更多优化器和调度器示例
-- [ ] 集成更多实验跟踪工具
-- [ ] 添加模型导出和部署功能
-- [ ] 完善单元测试和文档
+- [ ] Complete data module implementation
+- [ ] Add more optimizer and scheduler examples
+- [ ] Integrate more experiment tracking tools
+- [ ] Add model export and deployment features
+- [ ] Improve unit tests and documentation
 
 ---
 
-这个框架体现了现代深度学习工程的最佳实践，通过合理的抽象和模块化设计，为快速原型开发和生产环境部署提供了坚实的基础。
+This framework embodies modern deep learning engineering best practices, providing a solid foundation for rapid prototyping and production deployment through reasonable abstraction and modular design.
