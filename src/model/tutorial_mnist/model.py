@@ -31,28 +31,37 @@ class MnistModel(BaseModel):
         label = batch.label
         logits = self._training_forward(image)
         loss = self.loss(logits, label)
-        self.metric_manager.forward(
+        self.metric_manager.update(
+            self,
+            batch_idx,
             "training_state",
-            loss=loss.mean(),
+            loss=loss,
             learning_rate=self.lr_schedulers().get_last_lr()[0],
+        )
+        self.metric_manager.update(
+            self, batch_idx, "classification", target=label, preds=logits
         )
         self.metric_manager.log(self, phase="train", current_step=self.global_step)
         return {"loss": loss, "preds": logits}
 
+    # def on_validation_batch_start(self, batch, batch_idx, dataloader_idx):
+    #     return super().on_validation_batch_start(batch, batch_idx, dataloader_idx)
     def on_train_epoch_end(self):
         # self.metric_manager.reset()
         return super().on_train_epoch_end()
 
     def validation_step(self, batch: MnistModelInput, batch_idx: int):
+        # self.batch_idx = batch_idx # 供 metric_manager 使用
         image = batch.image
         label = batch.label
         logits = self._inference_forward(image)
         loss = self.loss(logits, label)
-        self.metric_manager.forward("training_state", loss=loss.mean())
-        self.metric_manager.forward("classification", target=label, preds=logits)
-        # self.metric_manager.update("training_state", loss=loss)
-        # self.metric_manager.update("classification", target=label, preds=logits)
-        self.metric_manager.log(self, phase="val", current_step=self.global_step)
+        self.metric_manager.update(self, batch_idx, "training_state", loss=loss)
+        self.metric_manager.update(
+            self, batch_idx, "classification", target=label, preds=logits
+        )
+
+        self.metric_manager.log(self, phase="val", current_step=batch_idx)
         return {"loss": loss, "preds": logits}
 
     def on_validation_epoch_end(self):
@@ -64,7 +73,7 @@ class MnistModel(BaseModel):
         label = batch.label
         logits = self._inference_forward(image)
         loss = self.loss(logits, label)
-        self.metric_manager.update("training_state", loss=loss)
+        # self.metric_manager.update("training_state", loss=loss)
         self.metric_manager.update("classification", target=label, preds=logits)
         self.metric_manager.log(self, phase="test", current_step=self.global_step)
         return {"loss": loss, "preds": logits}

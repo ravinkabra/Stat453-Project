@@ -10,7 +10,7 @@ from src.metric._manager import (
     ManagedMetricConfig,
     MetricLogConfig,
 )
-from src.metric.value_recoder.config import ValueRecorderParams 
+from src.metric.value_recoder.config import ValueRecorderParams
 from torchmetrics import MeanMetric
 from torchmetrics.classification import Accuracy, F1Score, Precision, Recall
 from src._logger.config import TensorBoardLoggerParams, CSVLoggerParams
@@ -26,10 +26,10 @@ train_dataset = MnistDatasetConfig(
     persistent_workers=False,
     shuffle=True,
     data_dir="./data/mnist",
-    dataset_range=[0.0, 0.95],
+    dataset_range=[0.0, 0.15],
 )
 val_dataset = MnistDatasetConfig(
-    batch_size=32,
+    batch_size=2,
     num_workers=0,
     shuffle=False,
     persistent_workers=False,
@@ -57,9 +57,10 @@ metric_manager = MetricManagerConfig(
     metrics={
         "training_state": ManagedMetricConfig(
             log_config=MetricLogConfig(
-                phase=["train", "val", "test"],
+                phase=["train"],
                 prog_bar=True,
-                frequency=50,
+                update_frequency=5,
+                on_step=True,
             ),
             metrics={
                 "loss": ValueRecorderParams(),
@@ -68,19 +69,25 @@ metric_manager = MetricManagerConfig(
         ),
         "classification": ManagedMetricConfig(
             log_config=MetricLogConfig(
-                phase=["val", "test"],
+                phase=["train"],
                 prog_bar=True,
-                # frequency=3,
+                update_frequency=1,
+                compute_frequency=1,
+                on_step=True,
             ),
             metrics={
                 "accuracy": Accuracy.__new__(
-                    Accuracy, task="multiclass", num_classes=10
+                    Accuracy, task="multiclass", num_classes=10, average="macro"
                 ),
-                "f1_score": F1Score.__new__(F1Score, task="multiclass", num_classes=10),
+                "f1_score": F1Score.__new__(
+                    F1Score, task="multiclass", num_classes=10, average="macro"
+                ),
                 "precision": Precision.__new__(
-                    Precision, task="multiclass", num_classes=10
+                    Precision, task="multiclass", num_classes=10, average="macro"
                 ),
-                "recall": Recall.__new__(Recall, task="multiclass", num_classes=10),
+                "recall": Recall.__new__(
+                    Recall, task="multiclass", num_classes=10, average="macro"
+                ),
             },
         ),
     }
@@ -100,8 +107,8 @@ loggers = {
     ),
 }
 trainer = BaseTrainerConfig(
-    max_epochs=10,
-    log_every_n_steps=1,
+    max_epochs=3,
+    log_every_n_steps=5,
 )
 callbacks = {
     "sample_saver": TrainingSampleSaverCallbackConfig(

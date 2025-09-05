@@ -1,5 +1,6 @@
-from pydantic.dataclasses import dataclass, Field,ConfigDict
-from typing import Dict, Any, Literal, Union, Optional
+from pydantic.dataclasses import dataclass, Field, ConfigDict
+from pydantic import field_validator, model_validator
+from typing import Dict, Any, Literal, Union, Optional, Self
 
 from torchmetrics import Metric
 
@@ -9,11 +10,15 @@ from ..base.config import BaseMetricParams
 @dataclass
 class MetricLogConfig:
     phase: list[Literal["train", "val", "test"]] = Field(
-        default_factory=lambda: ["train", "val", "test"]
+        default_factory=lambda: ["train", "val", "test"],
+        description="When not in training phase, the 'on_step' logging will be forced to False. https://github.com/Lightning-AI/pytorch-lightning/issues/10436",
     )
-    frequency: int = Field(
-        default=1,
-        description="Logging frequency. Note that the real logging frequency will be the Least Common Multiple of this and the logging frequency of the trainer.",
+    update_frequency: int = Field(
+        default=1, description="Update frequency for the logged values."
+    )
+    compute_frequency: Optional[int] = Field(
+        default=None,
+        description="Compute frequency for the logged values. Must be a multiple of update_frequency. If not set, will default to update_frequency.",
     )
     # the log params needed by lightning module
     prog_bar: bool = Field(
@@ -25,6 +30,24 @@ class MetricLogConfig:
     reduce_fx: Optional[Literal["mean", "sum", "max", "min"]] = Field(
         default="mean", description="Reduction function to apply to the logged values."
     )
+
+    @model_validator(mode="after")
+    def validate_compute_frequency(self) -> Self:
+        """验证 compute_frequency 必须是 update_frequency 的倍数"""
+        if self.compute_frequency is None:
+            self.compute_frequency = self.update_frequency
+        elif self.compute_frequency % self.update_frequency != 0:
+            raise ValueError("compute_frequency must be a multiple of update_frequency")
+        return self
+
+    @model_validator(mode="after")
+    def validate_phase_and_on_step(self) -> Self:
+        """验证 phase 和 on_step 的组合"""
+        if self.on_step and ("val" in self.phase or "test" in self.phase):
+            raise ValueError(
+                f"When not in training phase, 'on_step' logging must be False. But got on_step={self.on_step} and phase={self.phase}."
+            )
+        return self
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
