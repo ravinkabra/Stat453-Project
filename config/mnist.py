@@ -1,4 +1,4 @@
-from src._project.config import ProjectConfig
+from src._project.base.config import ProjectConfig
 from src._datamodule.base.config import BaseDataModuleConfig
 from src.dataset.tutorial_mnist.config import MnistDatasetConfig
 from src.model.tutorial_mnist.config import MnistModelConfig

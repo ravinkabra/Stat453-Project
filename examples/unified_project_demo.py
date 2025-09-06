@@ -7,8 +7,8 @@
 - 通过配置管理所有参数，无需额外包装
 """
 
-from src._project.manager import ProjectManager, create_training_project
-from src._project.config import (
+from src._project.base.project import ProjectManager, create_training_project
+from src._project.base.config import (
     ProjectConfig,
     get_unet_project_config,
     get_llm_project_config,

@@ -6,11 +6,11 @@ from pydantic.dataclasses import dataclass, ConfigDict
 from pydantic import Field
 from typing import Dict, Any, Optional, List, Literal
 
-from .._logger import UnionLoggerParams
-from .._datamodule import UnionDataModuleConfig
-from .._trainer import UnionTrainerConfig
-from ..callback import UnionCallbackConfig
-from ..model import UnionModelConfig
+from ..._logger import UnionLoggerParams
+from ..._datamodule import UnionDataModuleConfig
+from ..._trainer import UnionTrainerConfig
+from ...callback import UnionCallbackConfig
+from ...model import UnionModelConfig
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))

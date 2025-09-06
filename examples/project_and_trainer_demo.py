@@ -138,7 +138,7 @@ def demo_integration_workflow():
     print("步骤2: 创建项目管理器")
     # 注意：这里展示概念，实际使用时需要有真实的模型类
     try:
-        from src._project.config import ProjectConfig
+        from src._project.base.config import ProjectConfig
 
         config = ProjectConfig(**project_config)
         project = ProjectManager(config)
