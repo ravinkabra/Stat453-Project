@@ -12,13 +12,13 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from src.callback.sample_saver.config import (
+from src._callback.sample_saver.config import (
     TrainingSampleSaverCallbackConfig,
     SaveKeyConfig,
     get_unet_example_config,
     get_llm_example_config,
 )
-from src.callback.sample_saver.callback import TrainingSampleSaverCallback
+from src._callback.sample_saver.callback import TrainingSampleSaverCallback
 import torch
 import numpy as np
 from pathlib import Path

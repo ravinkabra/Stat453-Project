@@ -8,8 +8,8 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from src.callback.sample_saver.callback import TrainingSampleSaver
-from src.callback.sample_saver.config import (
+from src._callback.sample_saver.callback import TrainingSampleSaver
+from src._callback.sample_saver.config import (
     TrainingSampleSaverConfig,
     SaveKeyConfig,
     get_unet_example_config,

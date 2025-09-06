@@ -8,8 +8,8 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from src.callback.sample_saver.callback import TrainingSampleSaverCallback
-from src.callback.sample_saver.config import SaveKeyConfig
+from src._callback.sample_saver.callback import TrainingSampleSaverCallback
+from src._callback.sample_saver.config import SaveKeyConfig
 
 
 def example_new_constructor():
@@ -57,7 +57,7 @@ def example_mixed_usage():
     print("\n=== 混合使用示例 ===")
 
     # 方法2：仍然可以使用传统的 config 对象方式
-    from src.callback.sample_saver.config import TrainingSampleSaverCallbackConfig
+    from src._callback.sample_saver.config import TrainingSampleSaverCallbackConfig
 
     config = TrainingSampleSaverCallbackConfig(
         save_dir="./config_object_samples",

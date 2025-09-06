@@ -15,8 +15,8 @@ from torchmetrics import MeanMetric
 from torchmetrics.classification import Accuracy, F1Score, Precision, Recall
 from src._logger.config import TensorBoardLoggerParams, CSVLoggerParams
 from src._trainer.base.config import BaseTrainerConfig
-from src.callback.sample_saver.config import (
-    TrainingSampleSaverCallbackConfig,
+from src._callback.sample_saver.config import (
+    SampleSaverCallbackConfig,
     SaveKeyConfig,
 )
 
@@ -111,7 +111,7 @@ trainer = BaseTrainerConfig(
     log_every_n_steps=5,
 )
 callbacks = {
-    "sample_saver": TrainingSampleSaverCallbackConfig(
+    "sample_saver": SampleSaverCallbackConfig(
         save_dir="./output/mnist_example/samples",
         save_keys={
             "image": SaveKeyConfig(

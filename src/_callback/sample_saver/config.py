@@ -42,8 +42,8 @@ class SaveKeyConfig:
 
 
 @dataclass
-class TrainingSampleSaverCallbackConfig:
-    """TrainingSampleSaverCallback 的配置类
+class SampleSaverCallbackConfig:
+    """SampleSaverCallback 的配置类
 
     设计思路：
     - 全局配置作为默认值
@@ -54,7 +54,7 @@ class TrainingSampleSaverCallbackConfig:
     _target_: str = Field(
         default="src.callback.sample_saver.callback.TrainingSampleSaverCallback"
     )
-    save_dir: str = Field(default="./training_samples", description="保存根目录")
+    save_dir: str = Field(default="./samples", description="保存根目录")
     save_keys: Dict[str, SaveKeyConfig] = Field(
         default_factory=dict, description="保存配置字典"
     )
@@ -85,9 +85,9 @@ class TrainingSampleSaverCallbackConfig:
 
 
 # 示例配置
-def get_unet_example_config() -> TrainingSampleSaverCallbackConfig:
+def get_unet_example_config() -> SampleSaverCallbackConfig:
     """UNet 训练的示例配置"""
-    return TrainingSampleSaverCallbackConfig(
+    return SampleSaverCallbackConfig(
         save_dir="./unet_samples",
         dir_structure="epoch_step",  # 使用 epoch/step 目录结构
         save_keys={
@@ -126,9 +126,9 @@ def get_unet_example_config() -> TrainingSampleSaverCallbackConfig:
     )
 
 
-def get_llm_example_config() -> TrainingSampleSaverCallbackConfig:
+def get_llm_example_config() -> SampleSaverCallbackConfig:
     """LLM 训练的示例配置"""
-    return TrainingSampleSaverCallbackConfig(
+    return SampleSaverCallbackConfig(
         save_dir="./llm_samples",
         dir_structure="epoch",  # 按 epoch 组织目录
         save_keys={
@@ -164,9 +164,9 @@ def get_llm_example_config() -> TrainingSampleSaverCallbackConfig:
     )
 
 
-def get_complex_nested_example() -> TrainingSampleSaverCallbackConfig:
+def get_complex_nested_example() -> SampleSaverCallbackConfig:
     """复杂嵌套数据的示例配置"""
-    return TrainingSampleSaverCallbackConfig(
+    return SampleSaverCallbackConfig(
         save_dir="./complex_samples",
         dir_structure="step",  # 按 step 组织目录
         save_keys={

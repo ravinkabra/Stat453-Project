@@ -8,12 +8,12 @@ import torch
 from PIL import Image
 import numpy as np
 from datetime import datetime
-from .config import TrainingSampleSaverCallbackConfig, SaveKeyConfig
+from .config import SampleSaverCallbackConfig, SaveKeyConfig
 
 from typing import overload
 
 
-class TrainingSampleSaverCallback(Callback):
+class SampleSaverCallback(Callback):
     """
     训练样本保存回调 - 用于在训练过程中保存关键内容
 
@@ -31,12 +31,12 @@ class TrainingSampleSaverCallback(Callback):
     """
 
     @overload
-    def __init__(self, config: TrainingSampleSaverCallbackConfig) -> None: ...
+    def __init__(self, config: SampleSaverCallbackConfig) -> None: ...
     @overload
     def __init__(
         self,
         *,
-        save_dir: str = "./training_samples",
+        save_dir: str = "./samples",
         save_keys: Dict[str, SaveKeyConfig] = ...,
         default_save_frequency: int = 100,
         default_max_samples: int = 4,
@@ -51,9 +51,9 @@ class TrainingSampleSaverCallback(Callback):
 
     def __init__(
         self,
-        config: TrainingSampleSaverCallbackConfig = None,
+        config: SampleSaverCallbackConfig = None,
         *,
-        save_dir: str = "./training_samples",
+        save_dir: str = "./samples",
         save_keys: Dict[str, SaveKeyConfig] = None,
         default_save_frequency: int = 100,
         default_max_samples: int = 4,
@@ -66,14 +66,14 @@ class TrainingSampleSaverCallback(Callback):
         add_step_info: bool = True,
     ):
         """
-        初始化 TrainingSampleSaverCallback
+        初始化 SampleSaverCallback
 
         Args:
-            config: TrainingSampleSaverCallbackConfig 配置对象。
+            config: SampleSaverCallbackConfig 配置对象。
                    如果提供此参数，将使用配置对象初始化，其他参数将被忽略。
-                   示例: TrainingSampleSaverCallback(config=my_config)
+                   示例: SampleSaverCallback(config=my_config)
 
-            save_dir: 保存根目录。默认为 "./training_samples"
+            save_dir: 保存根目录。默认为 "./samples"
             save_keys: 保存配置字典。默认为空字典
             default_save_frequency: 默认保存频率（每N个batch保存一次）。默认为 100
             default_max_samples: 默认每次最多保存的样本数。默认为 4
@@ -87,11 +87,11 @@ class TrainingSampleSaverCallback(Callback):
 
         使用示例:
             # 方式1: 使用配置对象（推荐用于复杂配置）
-            config = TrainingSampleSaverCallbackConfig(...)
-            callback = TrainingSampleSaverCallback(config=config)
+            config = SampleSaverCallbackConfig(...)
+            callback = SampleSaverCallback(config=config)
 
             # 方式2: 直接传入参数（适合简单配置）
-            callback = TrainingSampleSaverCallback(
+            callback = SampleSaverCallback(
                 save_dir="./my_samples",
                 save_keys={"output": SaveKeyConfig(...)},
                 default_save_frequency=50
@@ -104,7 +104,7 @@ class TrainingSampleSaverCallback(Callback):
             if default_phases is None:
                 default_phases = ["val"]
 
-            config = TrainingSampleSaverCallbackConfig(
+            config = SampleSaverCallbackConfig(
                 save_dir=save_dir,
                 save_keys=save_keys,
                 default_save_frequency=default_save_frequency,

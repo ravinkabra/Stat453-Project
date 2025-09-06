@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional, List, Literal
 from ..._logger import UnionLoggerParams
 from ..._datamodule import UnionDataModuleConfig
 from ..._trainer import UnionTrainerConfig
-from ...callback import UnionCallbackConfig
+from ..._callback import UnionCallbackConfig
 from ...model import UnionModelConfig
 
 
