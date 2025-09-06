@@ -6,6 +6,14 @@ from pydantic.dataclasses import dataclass, ConfigDict
 from pydantic import Field
 from typing import Dict, Any, Optional, List, Literal
 
+import dataclasses
+import os
+
+try:
+    import yaml
+except Exception:  # pragma: no cover - graceful fallback if PyYAML not installed
+    yaml = None
+
 from ..._logger import UnionLoggerParams
 from ..._datamodule import UnionDataModuleConfig
 from ..._trainer import UnionTrainerConfig
@@ -73,6 +81,79 @@ class ProjectConfig:
     def get_experiment_name(self) -> str:
         """获取实验名称"""
         return self.experiment_name or self.name
+
+    def to_dict(self, exclude_none: bool = True) -> Dict[str, Any]:
+        """把 ProjectConfig 转成原生 Python 字典。
+
+        - 使用 dataclasses.asdict 递归地把 dataclass 转为 dict。
+        - 当 exclude_none=True 时，会递归移除值为 None 的条目，便于生成更简洁的 yaml。
+        """
+        result = dataclasses.asdict(self)
+
+        if not exclude_none:
+            return result
+
+        def _clean(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                new = {}
+                for k, v in obj.items():
+                    v2 = _clean(v)
+                    if v2 is not None:
+                        new[k] = v2
+                return new
+            if isinstance(obj, (list, tuple)):
+                cleaned = [_clean(v) for v in obj]
+                return [v for v in cleaned if v is not None]
+            return obj
+
+        return _clean(result)
+
+    def to_yaml(self, path: Optional[str] = None, sort_keys: bool = False) -> str:
+        """把 ProjectConfig 导出为 YAML 字符串，并可选择写入文件。
+
+        Args:
+            path: 如果提供，将把 YAML 写入到该路径（会创建父目录）。
+            sort_keys: 是否对字典的键进行排序写入。
+
+        Returns:
+            生成的 YAML 字符串。
+
+        注意:
+            该方法依赖 PyYAML（yaml）。若未安装，会退回到使用 str() 表示对象并生成简单字符串。
+        """
+        data = self.to_dict(exclude_none=True)
+
+        # 如果 PyYAML 可用，使用它并为不可序列化对象提供默认的字符串表示。
+        if yaml is not None:
+
+            class _Dumper(yaml.SafeDumper):
+                pass
+
+            def _repr_unknown(dumper, value):
+                # 把任意对象都当作字符串标量处理，避免序列化失败
+                return dumper.represent_scalar("tag:yaml.org,2002:str", str(value))
+
+            # 为所有未特别处理的对象注册 representer
+            _Dumper.add_multi_representer(object, _repr_unknown)
+
+            yaml_str = yaml.dump(
+                data,
+                Dumper=_Dumper,
+                sort_keys=sort_keys,
+                allow_unicode=True,
+            )
+        else:
+            # 最小回退：把 dict 转为 str，尽量可读
+            yaml_str = str(data)
+
+        if path:
+            dirpath = os.path.dirname(path)
+            if dirpath:
+                os.makedirs(dirpath, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(yaml_str)
+
+        return yaml_str
 
 
 # 预定义的项目配置示例

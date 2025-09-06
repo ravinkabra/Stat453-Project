@@ -12,7 +12,14 @@ from src.metric._manager import (
 )
 from src.metric.value_recoder.config import ValueRecorderParams
 from torchmetrics import MeanMetric
-from torchmetrics.classification import Accuracy, F1Score, Precision, Recall
+
+# from torchmetrics.classification import Accuracy, F1Score, Precision, Recall
+from src.metric.classification.config import (
+    AccuracyParams,
+    F1ScoreParams,
+    PrecisionParams,
+    RecallParams,
+)
 from src._logger import TensorBoardLoggerParams, CSVLoggerParams
 from src._trainer.base.config import BaseTrainerConfig
 from src._callback.sample_saver.config import (
@@ -51,7 +58,8 @@ datamodule = BaseDataModuleConfig(
 network = LeNetConfig(in_channels=1, num_classes=10)
 optimizer = AdamParams(_target_="torch.optim.Adam", lr=1e-3, weight_decay=1e-5)
 lr_scheduler = CosineAnnealingLRParams(
-    _target_="torch.optim.lr_scheduler.CosineAnnealingLR",frequency=10,
+    _target_="torch.optim.lr_scheduler.CosineAnnealingLR",
+    frequency=10,
 )
 metric_manager = MetricManagerConfig(
     metrics={
@@ -76,17 +84,17 @@ metric_manager = MetricManagerConfig(
                 on_step=True,
             ),
             metrics={
-                "accuracy": Accuracy.__new__(
-                    Accuracy, task="multiclass", num_classes=10, average="macro"
+                "accuracy": AccuracyParams(
+                    task="multiclass", num_classes=10, average="macro"
                 ),
-                "f1_score": F1Score.__new__(
-                    F1Score, task="multiclass", num_classes=10, average="macro"
+                "f1_score": F1ScoreParams(
+                    task="multiclass", num_classes=10, average="macro"
                 ),
-                "precision": Precision.__new__(
-                    Precision, task="multiclass", num_classes=10, average="macro"
+                "precision": PrecisionParams(
+                    task="multiclass", num_classes=10, average="macro"
                 ),
-                "recall": Recall.__new__(
-                    Recall, task="multiclass", num_classes=10, average="macro"
+                "recall": RecallParams(
+                    task="multiclass", num_classes=10, average="macro"
                 ),
             },
         ),
@@ -153,3 +161,5 @@ project = ProjectConfig(
     callbacks=callbacks,
     trainer=trainer,
 )
+
+project.to_yaml("./config/mnist.yaml")

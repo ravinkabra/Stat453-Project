@@ -7,4 +7,4 @@ from torchmetrics.image import PeakSignalNoiseRatio,StructuralSimilarityIndexMea
 
 @dataclass(config=ConfigDict(extra="allow"))
 class BaseMetricParams:
-    _target_:str = Field(default="torchmetrics.Metric")
+    _target_: str = Field(default="torchmetrics.Metric")

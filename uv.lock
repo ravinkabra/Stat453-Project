@@ -663,14 +663,14 @@ requires-dist = [
     { name = "pytorch-lightning", specifier = ">=2.5.4" },
     { name = "tensorboard", specifier = ">=2.20.0" },
     { name = "torch", specifier = ">=2.8.0" },
+    { name = "torch", marker = "extra == 'cpu'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "model-training-framework", extra = "cpu" } },
     { name = "torch", marker = "extra == 'gpu'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "model-training-framework", extra = "gpu" } },
-    { name = "torch", extras = ["cpu"], marker = "extra == 'cpu'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "model-training-framework", extra = "cpu" } },
+    { name = "torchaudio", marker = "extra == 'cpu'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "model-training-framework", extra = "cpu" } },
     { name = "torchaudio", marker = "extra == 'gpu'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "model-training-framework", extra = "gpu" } },
-    { name = "torchaudio", extras = ["cpu"], marker = "extra == 'cpu'", specifier = ">=2.8.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "model-training-framework", extra = "cpu" } },
     { name = "torchmetrics", specifier = ">=1.8.1" },
     { name = "torchvision", specifier = ">=0.23.0" },
+    { name = "torchvision", marker = "extra == 'cpu'", specifier = ">=0.23.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "model-training-framework", extra = "cpu" } },
     { name = "torchvision", marker = "extra == 'gpu'", specifier = ">=0.23.0", index = "https://download.pytorch.org/whl/cu128", conflict = { package = "model-training-framework", extra = "gpu" } },
-    { name = "torchvision", extras = ["cpu"], marker = "extra == 'cpu'", specifier = ">=0.23.0", index = "https://download.pytorch.org/whl/cpu", conflict = { package = "model-training-framework", extra = "cpu" } },
 ]
 provides-extras = ["gpu", "cpu", "dev", "all"]
 
