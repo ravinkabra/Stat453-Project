@@ -1,8 +1,5 @@
-import torch
 from pytorch_lightning import LightningModule
 from hydra.utils import instantiate, get_class
-from torchmetrics import MetricCollection
-from torchmetrics.classification import Accuracy, Precision, Recall
 from abc import ABC, abstractmethod
 from typing import Any, Optional, Mapping, Union
 from pathlib import Path
@@ -90,6 +87,7 @@ class BaseModel(LightningModule, ABC):
     ) -> None:
         """
         Abstract method to save the model output.
+        Will be called by SampleSaverCallback.
         Must be implemented by subclasses.
         """
         raise NotImplementedError

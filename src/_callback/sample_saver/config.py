@@ -49,6 +49,7 @@ class SampleSaverCallbackConfig:
     - 全局配置作为默认值
     - 每个 SaveKeyConfig 可以覆盖全局配置
     - 支持目录层级结构组织
+    - 调用时机在训练、验证、测试的 on_train_batch_end, on_validation_batch_end, on_test_batch_end 结束后
     """
 
     _target_: str = Field(
