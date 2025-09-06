@@ -16,3 +16,4 @@
     - 一般需要包含 `_target_` 用于自动创建
     - `Config` 结尾：component类实例化可直接传入，对应自动实例化方法 `get_class + cls(config)`
     - `Params` 结尾：component类需要将 `_target_` 去掉后，将field转为dict并 `**` 解析，可利用 `instantiate`
+
