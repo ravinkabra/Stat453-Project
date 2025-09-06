@@ -1,5 +1,5 @@
 from .sample_saver.config import SampleSaverCallbackConfig
-from .sample_saver.callback import TrainingSampleSaverCallback
+from .sample_saver.callback import SampleSaverCallback
 from .checkpoint.config import ModelCheckpointParams
 from .early_stopping.config import EarlyStoppingParams
 
@@ -11,7 +11,7 @@ UnionCallbackConfig = Union[
 ]
 
 __all__ = [
-    "TrainingSampleSaverCallback",
+    "SampleSaverCallback",
     "SampleSaverCallbackConfig",
     "ModelCheckpointParams",
     "EarlyStoppingParams",

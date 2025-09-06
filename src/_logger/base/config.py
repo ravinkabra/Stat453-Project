@@ -2,7 +2,7 @@ from typing import Optional, Union
 from pydantic.dataclasses import dataclass
 from pydantic import Field
 
-from ...config_base import DictAccessMixin
+from ..._utils.config_base import DictAccessMixin
 
 
 @dataclass

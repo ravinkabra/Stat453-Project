@@ -52,7 +52,7 @@ class SampleSaverCallbackConfig:
     """
 
     _target_: str = Field(
-        default="src.callback.sample_saver.callback.TrainingSampleSaverCallback"
+        default="src._callback.sample_saver.callback.SampleSaverCallback"
     )
     save_dir: str = Field(default="./samples", description="保存根目录")
     save_keys: Dict[str, SaveKeyConfig] = Field(

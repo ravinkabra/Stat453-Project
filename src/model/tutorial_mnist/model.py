@@ -41,7 +41,7 @@ class MnistModel(BaseModel):
         self.metric_manager.update(
             self, batch_idx, "classification", target=label, preds=logits
         )
-        self.metric_manager.log(self, phase="train", current_step=self.global_step)
+        self.metric_manager.log(self, phase="train", batch_idx=batch_idx)
         return {"loss": loss, "preds": logits}
 
     # def on_validation_batch_start(self, batch, batch_idx, dataloader_idx):
@@ -61,7 +61,7 @@ class MnistModel(BaseModel):
             self, batch_idx, "classification", target=label, preds=logits
         )
 
-        self.metric_manager.log(self, phase="val", current_step=batch_idx)
+        self.metric_manager.log(self, phase="val", batch_idx=batch_idx)
         return {"loss": loss, "preds": logits}
 
     def on_validation_epoch_end(self):
@@ -75,7 +75,7 @@ class MnistModel(BaseModel):
         loss = self.loss(logits, label)
         # self.metric_manager.update("training_state", loss=loss)
         self.metric_manager.update("classification", target=label, preds=logits)
-        self.metric_manager.log(self, phase="test", current_step=self.global_step)
+        self.metric_manager.log(self, phase="test", batch_idx=batch_idx)
         return {"loss": loss, "preds": logits}
 
     def predict_step(
