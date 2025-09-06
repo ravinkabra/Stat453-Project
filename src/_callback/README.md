@@ -27,12 +27,12 @@ _callback/
 
 ## Core Components
 
-### TrainingSampleSaverCallback
+### SampleSaverCallback
 
 Training sample saver callback - automatically saves key sample data during training:
 
 ```python
-class TrainingSampleSaverCallback(Callback):
+class SampleSaverCallback(Callback):
     """
     Training sample saver callback - saves key content during training
     """
@@ -113,15 +113,15 @@ class EarlyStoppingParams:
 
 ```python
 from src._callback import (
-    TrainingSampleSaverCallback,
+    SampleSaverCallback,
     ModelCheckpointParams,
     EarlyStoppingParams,
     UnionCallbackConfig
 )
 
 # 1. Sample saver callback
-sample_saver = TrainingSampleSaverCallback(
-    save_dir="./training_samples",
+sample_saver = SampleSaverCallback(
+    save_dir="./samples",
     save_keys={
         "generated_images": SaveKeyConfig(
             source="outputs",

@@ -27,12 +27,12 @@ _callback/
 
 ## 核心组件
 
-### TrainingSampleSaverCallback
+### SampleSaverCallback
 
 训练样本保存回调 - 在训练过程中自动保存关键样本数据：
 
 ```python
-class TrainingSampleSaverCallback(Callback):
+class SampleSaverCallback(Callback):
     """
     训练样本保存回调 - 用于在训练过程中保存关键内容
     """
@@ -113,15 +113,15 @@ class EarlyStoppingParams:
 
 ```python
 from src._callback import (
-    TrainingSampleSaverCallback,
+    SampleSaverCallback,
     ModelCheckpointParams,
     EarlyStoppingParams,
     UnionCallbackConfig
 )
 
 # 1. 样本保存回调
-sample_saver = TrainingSampleSaverCallback(
-    save_dir="./training_samples",
+sample_saver = SampleSaverCallback(
+    save_dir="./samples",
     save_keys={
         "generated_images": SaveKeyConfig(
             source="outputs",
