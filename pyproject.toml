@@ -1,7 +1,7 @@
 [project]
 name = "model-training-framework"
 version = "0.1.0"
-description = "Add your description here"
+description = "A modular deep learning training framework based on PyTorch Lightning"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,3 +13,132 @@ dependencies = [
     "torchmetrics>=1.8.1",
     "torchvision>=0.23.0",
 ]
+
+[project.optional-dependencies]
+# GPU版本 - 包含CUDA支持的PyTorch
+gpu = [
+    "torch>=2.8.0",
+    "torchvision>=0.23.0",
+    "torchaudio>=2.8.0",
+]
+
+# CPU版本 - 仅CPU的PyTorch（更小，适合无GPU环境）
+cpu = [
+    "torch>=2.8.0",
+    "torchvision>=0.23.0",
+    "torchaudio>=2.8.0",
+]
+
+# 开发依赖
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+
+# 完整安装（推荐用于生产环境）
+all = [
+    "model-training-framework[gpu]",
+    "model-training-framework[dev]",
+]
+
+[tool.uv]
+# 配置依赖冲突（CPU和GPU版本不能同时安装）
+conflicts = [
+    [
+        { extra = "cpu" },
+        { extra = "gpu" },
+    ],
+]
+
+# 配置包源
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-gpu", extra = "gpu" },
+]
+torchvision = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-gpu", extra = "gpu" },
+]
+torchaudio = [
+    { index = "pytorch-cpu", extra = "cpu" },
+    { index = "pytorch-gpu", extra = "gpu" },
+]
+
+# 配置索引源
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-gpu"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+# 中文镜像源（手动控制）
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple"
+default = false
+
+[[tool.uv.index]]
+name = "tsinghua"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = false
+
+[[tool.uv.index]]
+name = "ustc"
+url = "https://pypi.mirrors.ustc.edu.cn/simple"
+default = false
+
+[[tool.uv.index]]
+name = "huawei"
+url = "https://repo.huaweicloud.com/repository/pypi/simple"
+default = false
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# =============================================================================
+# 安装说明 (Installation Instructions)
+# =============================================================================
+#
+# 推荐使用 uv 进行安装 (uv 会自动使用配置文件中的源设置):
+#
+# 1. 安装 uv (如果还没有安装):
+#    Windows: powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+#    macOS/Linux: curl -LsSf https://astral.sh/uv/install.sh | sh
+#
+# 2. GPU版本安装 (推荐):
+#    uv sync --extra gpu
+#
+# 3. CPU版本安装:
+#    uv sync --extra cpu
+#
+# 4. 开发环境安装:
+#    uv sync --extra dev
+#
+# 5. 完整安装:
+#    uv sync --extra gpu --extra dev
+#
+# 如果需要手动指定源 (不推荐，uv 会自动使用配置的源):
+#    uv sync --extra gpu --index https://mirrors.aliyun.com/pypi/simple/
+#
+# 可用的镜像源:
+# - 阿里云: https://mirrors.aliyun.com/pypi/simple/
+# - 清华大学: https://pypi.tuna.tsinghua.edu.cn/simple/
+# - 中科大: https://pypi.mirrors.ustc.edu.cn/simple/
+# - 华为云: https://repo.huaweicloud.com/repository/pypi/simple/
+#
+# 注意事项:
+# - uv 会自动处理依赖冲突和源选择
+# - GPU/CPU版本不能同时安装 (已在配置中设置冲突)
+# - 建议优先使用 uv sync，它会使用 pyproject.toml 中的 uv 配置
+# =============================================================================
