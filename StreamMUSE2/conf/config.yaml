@@ -1,0 +1,12 @@
+defaults:
+  - model: old_m2a_roformer
+  - loggers: 
+    - union
+  - datamodule: fns
+  - trainer@trainer
+  - _self_
+  
+
+project: ...
+version: "1.0"
+save_dir: "logs"

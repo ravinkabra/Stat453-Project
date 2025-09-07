@@ -1,0 +1,8 @@
+defaults:
+  - _self_
+  - /network/roformer/tiny@local_encoder_network_config  # 使用 tiny 模型配置
+  - /network/roformer/medium@global_network_config  # 使用 medium 模型配置
+  - /network/roformer/tiny@local_decoder_network_config  # 使用 tiny 模型配置
+
+_target_: src.model.old_m2a_roformer.model.OldM2ATransformer
+sub_seq_len: 384
