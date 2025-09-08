@@ -1,0 +1,22 @@
+{
+  "[python]": {
+    "editor.formatOnSave": true,
+    "editor.formatOnType": true,
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.inlayHints.maximumLength": 100,
+    "diffEditor.ignoreTrimWhitespace": true
+  },
+
+  "editor.defaultFormatter": "charliermarsh.ruff",
+  "ruff.lint.run": "onSave",
+  "ruff.lineLength": 120,
+  "ruff.nativeServer": "on",
+  "python.formatting.provider": "none",
+"python.linting.enabled": true,
+"python.analysis.aiCodeActions": {
+
+    "implementAbstractClasses": true,
+    "generateSymbol": true,
+    "convertFormatString": true
+}
+}

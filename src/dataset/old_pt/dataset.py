@@ -40,7 +40,7 @@ class OldPtDataset(BaseDataset):
                 self.file_path[:-3] + ".pitch_shift_range.pt", mmap=True
             ).reshape(-1, 2)
             self.pitch_shift_range_mel = torch.load(
-                self.file_path.replace("acc.pt", "mel.pt")[:-3]
+                self.file_path.replace("acc", "mel")[:-3]
                 + ".pitch_shift_range.pt",
                 mmap=True,
             ).reshape(-1, 2)

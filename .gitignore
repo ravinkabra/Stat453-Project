@@ -1,5 +1,6 @@
-/data 
-/output
+data/
+output/
+original_dataset/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
