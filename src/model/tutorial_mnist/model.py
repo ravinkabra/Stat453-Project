@@ -76,7 +76,7 @@ class MnistModel(BaseModel):
     ):
         return super().predict_step(batch, batch_idx, dataloader_idx)
 
-    @override
+    # @override
     def decode(self, model_output: torch.Tensor) -> torch.Tensor:
         model_output = model_output.detach()
         return model_output.argmax(dim=1)

@@ -1,5 +1,6 @@
 from src._project.base.config import ProjectConfig
 from src._datamodule.base.config import BaseDataModuleConfig
+
 # from src.dataset.tutorial_mnist.config import MnistDatasetConfig
 # from src.model.tutorial_mnist.config import MnistModelConfig
 # from src.network.tutorial_lenet.config import LeNetConfig
@@ -48,11 +49,8 @@ val_dataset = OldPtDatasetConfig(
     shuffle=False,
     persistent_workers=False,
 )
-datamodule = BaseDataModuleConfig(
-    train=train_dataset, val=val_dataset
-)
+datamodule = BaseDataModuleConfig(train=train_dataset, val=val_dataset)
 
-# network = LeNetConfig(in_channels=1, num_classes=10)
 optimizer = AdamParams(_target_="torch.optim.Adam", lr=1e-3, weight_decay=1e-5)
 lr_scheduler = CosineAnnealingLRParams(
     _target_="torch.optim.lr_scheduler.CosineAnnealingLR",
@@ -62,7 +60,7 @@ metric_manager = MetricManagerConfig(
     metrics={
         "training_state": ManagedMetricConfig(
             log_config=MetricLogConfig(
-                phase=["train"],
+                phase=["train", "val"],
                 prog_bar=True,
                 update_frequency=5,
                 on_step=True,
@@ -72,91 +70,121 @@ metric_manager = MetricManagerConfig(
                 "learning_rate": ValueRecorderParams(),
             },
         ),
-        "classification": ManagedMetricConfig(
-            log_config=MetricLogConfig(
-                phase=["train"],
-                prog_bar=True,
-                update_frequency=1,
-                compute_frequency=1,
-                on_step=True,
-            ),
-            metrics={
-                "accuracy": AccuracyParams(
-                    task="multiclass", num_classes=10, average="macro"
-                ),
-                "f1_score": F1ScoreParams(
-                    task="multiclass", num_classes=10, average="macro"
-                ),
-                "precision": PrecisionParams(
-                    task="multiclass", num_classes=10, average="macro"
-                ),
-                "recall": RecallParams(
-                    task="multiclass", num_classes=10, average="macro"
-                ),
-            },
-        ),
+        # "classification": ManagedMetricConfig(
+        #     log_config=MetricLogConfig(
+        #         phase=["train"],
+        #         prog_bar=True,
+        #         update_frequency=1,
+        #         compute_frequency=1,
+        #         on_step=True,
+        #     ),
+        #     metrics={
+        #         "accuracy": AccuracyParams(
+        #             task="multiclass", num_classes=10, average="macro"
+        #         ),
+        #         "f1_score": F1ScoreParams(
+        #             task="multiclass", num_classes=10, average="macro"
+        #         ),
+        #         "precision": PrecisionParams(
+        #             task="multiclass", num_classes=10, average="macro"
+        #         ),
+        #         "recall": RecallParams(
+        #             task="multiclass", num_classes=10, average="macro"
+        #         ),
+        #     },
+        # ),
     }
 )
+from transformers.models.roformer import RoFormerConfig
+
+local_encoder_network = CustomizedRoFormerEncoderParams(
+    config=RoFormerConfig(
+        vocab_size=3000,
+        hidden_size=768,
+        num_hidden_layers=6,
+        num_attention_heads=4,
+        intermediate_size=1024,
+    )
+)
+
+main_encoder_network = CustomizedRoFormerEncoderParams(
+    config=RoFormerConfig(
+        vocab_size=3000,
+        hidden_size=768,
+        num_hidden_layers=12,
+        num_attention_heads=12,
+        intermediate_size=3072,
+    )
+)
+
+local_decoder_network = CustomizedRoFormerEncoderParams(
+    config=RoFormerConfig(
+        vocab_size=3000,
+        hidden_size=768,
+        num_hidden_layers=6,
+        num_attention_heads=4,
+        intermediate_size=1024,
+    )
+)
+
 model = OldPtM2ATransformerConfig(
-    network=network,
+    local_encoder_network=local_encoder_network,
+    global_network=main_encoder_network,
+    local_decoder_network=local_decoder_network,
     optimizer=optimizer,
     lr_scheduler=lr_scheduler,
     metric_manager=metric_manager,
 )
 loggers = {
-    "csv": CSVLoggerParams(
-        save_dir="./output/mnist_example/logs", flush_logs_every_n_steps=50, version=0
-    ),
-    "tensorboard": TensorBoardLoggerParams(
-        save_dir="./output/mnist_example/logs", version=0
-    ),
+    "csv": CSVLoggerParams(save_dir="./output/mnist_example/logs", flush_logs_every_n_steps=50, version=0),
+    "tensorboard": TensorBoardLoggerParams(save_dir="./output/mnist_example/logs", version=0),
 }
 trainer = BaseTrainerConfig(
     max_epochs=3,
     log_every_n_steps=5,
 )
 callbacks = {
-    "sample_saver": SampleSaverCallbackConfig(
-        save_dir="./output/mnist_example/samples",
-        save_keys={
-            "image": SaveKeyConfig(
-                source="batch",
-                keys=["image"],
-                format="image",
-                extension=".png",
-                phases=["val", "test"],
-                save_frequency=10,
-            ),
-            "label": SaveKeyConfig(
-                source="batch",
-                keys=["label"],
-                format="json",
-                extension=".json",
-                phases=["val", "test"],
-                save_frequency=10,
-            ),
-            "preds": SaveKeyConfig(
-                source="outputs",
-                keys=["preds"],
-                format="json",
-                extension=".json",
-                phases=["val", "test"],
-                save_frequency=10,
-            ),
-        },
-    )
+    # "sample_saver": SampleSaverCallbackConfig(
+    #     save_dir="./output/mnist_example/samples",
+    #     save_keys={
+    #         "image": SaveKeyConfig(
+    #             source="batch",
+    #             keys=["image"],
+    #             format="image",
+    #             extension=".png",
+    #             phases=["val", "test"],
+    #             save_frequency=10,
+    #         ),
+    #         "label": SaveKeyConfig(
+    #             source="batch",
+    #             keys=["label"],
+    #             format="json",
+    #             extension=".json",
+    #             phases=["val", "test"],
+    #             save_frequency=10,
+    #         ),
+    #         "preds": SaveKeyConfig(
+    #             source="outputs",
+    #             keys=["preds"],
+    #             format="json",
+    #             extension=".json",
+    #             phases=["val", "test"],
+    #             save_frequency=10,
+    #         ),
+    #     },
+    # )
 }
 project = ProjectConfig(
-    project_name="MNIST-Example",
-    output_dir="./output/mnist_example",
+    project_name="M2A-Example",
+    output_dir="./output/m2a_example",
     log_level="INFO",
-    experiment_name="mnist_experiment",
+    experiment_name="m2a_experiment",
     datamodule=datamodule,
     model=model,
     mode="train",
     loggers=loggers,
-    callbacks=callbacks,
+    # callbacks=callbacks,
     trainer=trainer,
 )
 
-project.to_yaml("./config/mnist.yaml")
+project.to_yaml("./config/m2a_example.yaml")

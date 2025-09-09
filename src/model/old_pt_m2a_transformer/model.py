@@ -1,4 +1,4 @@
-from typing import Optional, Any
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -43,41 +43,27 @@ class OldPtM2ATransformer(BaseModel):
     def __init__(self, config: OldPtM2ATransformerConfig):
         super().__init__(config)
         model_schema = config
-        self.hidden_size = model_schema.hidden_size
-        self.num_layers = model_schema.num_layers
-        self.num_attention_heads = model_schema.num_attention_heads
-        self.intermediate_size = model_schema.intermediate_size
-        self.local_model_num_layers = model_schema.local_model_num_layers
-        self.local_model_num_attention_heads = (
-            model_schema.local_model_num_attention_heads
-        )
-        self.local_model_intermediate_size = model_schema.local_model_intermediate_size
 
+        # Pull RoFormerConfig instances from the three network param fields.
+        global_params = model_schema.global_network
+        local_enc_params = model_schema.local_encoder_network
+        local_dec_params = model_schema.local_decoder_network
+
+        # Expose a few convenient attributes used elsewhere in the model implementation.
+        self.hidden_size = global_params.config.hidden_size
+        # HF config uses `num_hidden_layers` for layer count
         # Lazy import of transformers RoFormer to avoid heavy import at module load
         from transformers.models.roformer.modeling_roformer import (
-            RoFormerConfig,
             RoFormerEncoder,
         )
 
-        main_roformer_config = RoFormerConfig(
-            hidden_size=self.hidden_size,
-            num_hidden_layers=self.num_layers,
-            num_attention_heads=self.num_attention_heads,
-            intermediate_size=self.intermediate_size,
-            hidden_act="gelu",
-            hidden_dropout_prob=0.1,
-            attention_probs_dropout_prob=0.1,
-        )
+        # Use the provided RoFormerConfig instances from the config params. These
+        # were supplied via `CustomizedRoFormerEncoderParams.config`.
+        main_roformer_config = global_params.config
         self.model = RoFormerEncoder(main_roformer_config)
-        local_encoder_config = local_decoder_config = RoFormerConfig(
-            hidden_size=self.hidden_size,
-            num_hidden_layers=self.local_model_num_layers,
-            num_attention_heads=self.local_model_num_attention_heads,
-            intermediate_size=self.local_model_intermediate_size,
-            hidden_act="gelu",
-            hidden_dropout_prob=0.1,
-            attention_probs_dropout_prob=0.1,
-        )
+        local_encoder_config = local_enc_params.config
+        local_decoder_config = local_dec_params.config
+
         self.local_embedding = nn.Embedding(N_TOKENS, self.hidden_size)
         self.token_type_embeddings = nn.Embedding(2, self.hidden_size)
         with torch.no_grad():
@@ -112,9 +98,7 @@ class OldPtM2ATransformer(BaseModel):
         # prepend SOS: 在每个子序列头部插入特殊开始符
         x = torch.cat(
             [
-                torch.full(
-                    (x.shape[0], 1), SOS_TOKEN, dtype=torch.long, device=x.device
-                ),
+                torch.full((x.shape[0], 1), SOS_TOKEN, dtype=torch.long, device=x.device),
                 x,
             ],
             dim=-1,
@@ -148,9 +132,7 @@ class OldPtM2ATransformer(BaseModel):
         h = self.local_decoder(emb, attention_mask=self.buffered_future_mask(emb))[0]
         return self.final_decoder(h)
 
-    def local_sampling(
-        self, h: torch.Tensor, max_subseq_len: int = 32, temperature: float = 1.0
-    ):
+    def local_sampling(self, h: torch.Tensor, max_subseq_len: int = 32, temperature: float = 1.0):
         """基于局部 decoder 进行自回归采样。
 
         - h: 局部聚合向量，作为采样初始上下文
@@ -164,9 +146,7 @@ class OldPtM2ATransformer(BaseModel):
         eos_triggered = torch.zeros(batch_size, dtype=torch.bool, device=h.device)
 
         for i in range(max_subseq_len):
-            h_ = self.local_decoder(emb, attention_mask=self.buffered_future_mask(emb))[
-                0
-            ]
+            h_ = self.local_decoder(emb, attention_mask=self.buffered_future_mask(emb))[0]
             if temperature == 0:
                 # 贪心解码
                 p = F.one_hot(self.final_decoder(h_).argmax(dim=-1), N_TOKENS).float()
@@ -185,8 +165,7 @@ class OldPtM2ATransformer(BaseModel):
             emb = torch.cat(
                 [
                     emb,
-                    self.local_embedding(y_next)
-                    + self.token_type_embeddings(torch.ones_like(y_next)),
+                    self.local_embedding(y_next) + self.token_type_embeddings(torch.ones_like(y_next)),
                 ],
                 dim=1,
             )
@@ -206,9 +185,7 @@ class OldPtM2ATransformer(BaseModel):
             or self._future_mask.size(0) < dim
         ):
             # 构造上三角矩阵并用 -inf 填充未来位置
-            self._future_mask = torch.triu(
-                fill_with_neg_inf(torch.zeros([dim, dim])), 1
-            )
+            self._future_mask = torch.triu(fill_with_neg_inf(torch.zeros([dim, dim])), 1)
         self._future_mask = self._future_mask.to(tensor)
         return self._future_mask[:dim, :dim]
 
@@ -231,11 +208,7 @@ class OldPtM2ATransformer(BaseModel):
         # 构造 frame 类型（用于 token_type embedding）: 偶数帧/奇数帧交替
         idx = torch.arange(seq_len, device=x.device)
         frame_type = (idx % 2 == 0).long()
-        token_type_ids = (
-            frame_type.unsqueeze(0)
-            .unsqueeze(-1)
-            .expand(batch_size, seq_len, subseq_len)
-        )
+        token_type_ids = frame_type.unsqueeze(0).unsqueeze(-1).expand(batch_size, seq_len, subseq_len)
         sos_type = frame_type.unsqueeze(0).unsqueeze(-1).expand(batch_size, seq_len, 1)
         token_type_ids = torch.cat([sos_type, token_type_ids], dim=-1)
 
@@ -248,9 +221,7 @@ class OldPtM2ATransformer(BaseModel):
         h = torch.cat([sos, h[:, :-1]], dim=1)
 
         # 全局 encoder（使用 buffered_future_mask 保证自回归）
-        h = self.model(
-            h, attention_mask=self.buffered_future_mask(h), interleave_pos=True
-        )[0]
+        h = self.model(h, attention_mask=self.buffered_future_mask(h), interleave_pos=True)[0]
         return self.local_decode(h, emb)
 
     def preprocess(
@@ -283,12 +254,7 @@ class OldPtM2ATransformer(BaseModel):
         # 首个 token 的 type 字段（0 表示输入）
         x_processed[:, :, :, 0] = 0
         # 第二个 token 字段合成 pitch + duration*128 + offset + pitch_shift（如果不是 drum）
-        x_processed[:, :, :, 1] = (
-            x[:, :, :, 1]
-            + (x[:, :, :, 2]) * 128
-            + 2
-            + pitch_shift[:, None, None] * is_not_drum
-        )
+        x_processed[:, :, :, 1] = x[:, :, :, 1] + (x[:, :, :, 2]) * 128 + 2 + pitch_shift[:, None, None] * is_not_drum
         x_processed[pad_indices] = PAD_TOKEN
         x_processed[:, :, :, 0][eos_indices] = EOS_TOKEN
 
@@ -311,17 +277,14 @@ class OldPtM2ATransformer(BaseModel):
             is_not_drum_y = y[:, :, :, 0] != 127
             y_processed[:, :, :, 0] = 1
             y_processed[:, :, :, 1] = (
-                y[:, :, :, 1]
-                + (y[:, :, :, 2]) * 128
-                + 2
-                + pitch_shift[:, None, None] * is_not_drum_y
+                y[:, :, :, 1] + (y[:, :, :, 2]) * 128 + 2 + pitch_shift[:, None, None] * is_not_drum_y
             )
             y_processed[pad_indices_y] = PAD_TOKEN
             y_processed[:, :, :, 0][eos_indices_y] = EOS_TOKEN
 
-            return x_processed.view(
-                batch_size, seq_length, subseq_length // 3 * 2
-            ), y_processed.view(batch_size_y, seq_length_y, subseq_length_y // 3 * 2)
+            return x_processed.view(batch_size, seq_length, subseq_length // 3 * 2), y_processed.view(
+                batch_size_y, seq_length_y, subseq_length_y // 3 * 2
+            )
 
     def loss(
         self,
@@ -353,9 +316,7 @@ class OldPtM2ATransformer(BaseModel):
         y = self(x)
 
         # 计算交叉熵，忽略 PAD
-        return F.cross_entropy(
-            y.view(-1, N_TOKENS), x_target.view(-1), ignore_index=PAD_TOKEN
-        )
+        return F.cross_entropy(y.view(-1, N_TOKENS), x_target.view(-1), ignore_index=PAD_TOKEN)
 
     def training_step(self, batch: OldPtModelInput, batch_idx: int):
         # Expect batch to have attributes mel_data, acc_data, pitch_shift
@@ -409,6 +370,8 @@ class OldPtM2ATransformer(BaseModel):
     #         optimizer, max_lr=max_lr, total_steps=MAX_STEPS, pct_start=0.005
     #     )
     #     return [optimizer], [scheduler]
+    
+    
 
     def _move_to_device(self, batch: OldPtModelInput) -> OldPtModelInput:
         """将 batch 中的张量移动到模型的 device 上。
@@ -416,9 +379,4 @@ class OldPtM2ATransformer(BaseModel):
         这个函数对 batch 的每个属性调用 .to(self.device)（如果存在），并返回
         与原始 batch 同类型的对象（通过 type(batch) 重建）。这对多设备训练/推理很有用。
         """
-        return type(batch)(
-            **{
-                k: (v.to(self.device) if hasattr(v, "to") else v)
-                for k, v in batch.__dict__.items()
-            }
-        )
+        return type(batch)(**{k: (v.to(self.device) if hasattr(v, "to") else v) for k, v in batch.__dict__.items()})

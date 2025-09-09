@@ -68,13 +68,13 @@ class BaseModel(LightningModule, ABC):
 
         return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_config}
 
-    @abstractmethod
-    def decode(self, model_output) -> Any:
-        """
-        Abstract method to decode the model output into a more interpretable format.
-        Must be implemented by subclasses.
-        """
-        raise NotImplementedError
+    # @abstractmethod
+    # def decode(self, model_output) -> Any:
+    #     """
+    #     Abstract method to decode the model output into a more interpretable format.
+    #     Must be implemented by subclasses.
+    #     """
+    #     raise NotImplementedError
 
     @abstractmethod
     def save(

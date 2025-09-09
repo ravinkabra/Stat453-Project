@@ -1,5 +1,9 @@
 from ..base.config import BaseModelConfig, dataclass, Field
-from typing import Literal, Optional
+from typing import Literal
+
+# Import the reusable network params dataclass. We go up two package levels to reach
+# the top-level `src.network` package.
+from ...network.customized_roformer.config import CustomizedRoFormerEncoderParams
 
 
 @dataclass
@@ -8,13 +12,10 @@ class OldPtM2ATransformerConfig(BaseModelConfig):
         default="src.model.old_m2a_transformer.model.OldM2ATransformer"
     )
 
-    # Model hyper-parameters (defaults chosen to match original usage)
-    large: bool = Field(False)
-    hidden_size: Optional[int] = Field(None)
-    num_layers: Optional[int] = Field(None)
-    num_attention_heads: Optional[int] = Field(None)
-    intermediate_size: Optional[int] = Field(None)
 
-    local_model_num_layers: int = Field(3)
-    local_model_num_attention_heads: int = Field(8)
-    local_model_intermediate_size: int = Field(768)
+    # Replace the scalar hyper-parameters with three network params fields so the
+    # model can be constructed from prefilled network configs. This keeps
+    # configuration structured and re-uses the existing `CustomizedRoFormerEncoderParams`.
+    global_network: CustomizedRoFormerEncoderParams = Field(default_factory=CustomizedRoFormerEncoderParams)
+    local_encoder_network: CustomizedRoFormerEncoderParams = Field(default_factory=CustomizedRoFormerEncoderParams)
+    local_decoder_network: CustomizedRoFormerEncoderParams = Field(default_factory=CustomizedRoFormerEncoderParams)
