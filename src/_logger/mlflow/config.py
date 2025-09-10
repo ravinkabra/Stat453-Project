@@ -26,6 +26,6 @@ class MLFlowLoggerParams(BaseLoggerParams):
 
     # 高级参数
     tags: Optional[Dict[str, Any]] = Field(None, description="运行标签")
-    save_dir: str = Field("./mlflow_logs", description="本地保存目录")
+    save_dir: Optional[str] = Field(None, description="本地保存目录")
     artifact_location: Optional[str] = Field(None, description="Artifact 存储位置")
     run_id: Optional[str] = Field(None, description="现有运行ID")

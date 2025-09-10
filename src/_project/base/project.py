@@ -60,13 +60,11 @@ class ProjectManager:
         self.loggers: List[Logger] = []
 
         # 创建输出目录
-        self.output_dir = Path(config.output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.save_dir = Path(config.save_dir)
+        self.save_dir.mkdir(parents=True, exist_ok=True)
 
         # 实验目录
-        experiment_name = config.get_experiment_name()
-        self.experiment_dir = self.output_dir / experiment_name
-        self.experiment_dir.mkdir(parents=True, exist_ok=True)
+        self.save_experiment_version_dir = config.save_experiment_version_dir
 
     def build_model(self) -> LightningModule:
         """构建模型"""
@@ -88,16 +86,15 @@ class ProjectManager:
         """构建回调列表"""
         if not self.callbacks and self.config.callbacks:
             for callback_name, callback_config in self.config.callbacks.items():
-                try: 
+                try:
                     callback = instantiate(callback_config)
                 except Exception as e:
                     from dataclasses import asdict
+
                     callback_cls = get_class(callback_config._target_)
                     callback = callback_cls(**{k: v for k, v in asdict(callback_config).items() if k != "_target_"})
                 self.callbacks.append(callback)
-                self._log_info(
-                    f"✓ 回调已构建: {callback_name} -> {type(callback).__name__}"
-                )
+                self._log_info(f"✓ 回调已构建: {callback_name} -> {type(callback).__name__}")
         return self.callbacks
 
     def build_loggers(self) -> List[Logger]:
@@ -106,9 +103,7 @@ class ProjectManager:
             for logger_name, logger_config in self.config.loggers.items():
                 logger = instantiate(logger_config)
                 self.loggers.append(logger)
-                self._log_info(
-                    f"✓ 日志器已构建: {logger_name} -> {type(logger).__name__}"
-                )
+                self._log_info(f"✓ 日志器已构建: {logger_name} -> {type(logger).__name__}")
         return self.loggers
 
     def build_trainer(self) -> Trainer:
@@ -127,16 +122,19 @@ class ProjectManager:
                 trainer_config = self.config.trainer.copy() if self.config.trainer else {}
             elif isinstance(self.config.trainer, BaseTrainerConfig):
                 from dataclasses import asdict
+
                 trainer_config = asdict(self.config.trainer)
             # 自动添加组件
             if callbacks:
                 trainer_config["callbacks"] = callbacks
             if loggers:
-                trainer_config["logger"] = loggers #if len(loggers) > 1 else loggers[0]
+                trainer_config["logger"] = loggers  # if len(loggers) > 1 else loggers[0]
 
             # 设置默认输出目录（如果未指定）
             if "default_root_dir" not in trainer_config:
-                trainer_config["default_root_dir"] = str(self.experiment_dir)
+                trainer_config["default_root_dir"] = str(self.save_experiment_version_dir)
+            elif trainer_config["default_root_dir"] is None:
+                trainer_config["default_root_dir"] = str(self.save_experiment_version_dir)
 
             # 设置确定性模式
             if self.config.deterministic and "deterministic" not in trainer_config:
@@ -144,10 +142,7 @@ class ProjectManager:
 
             # 创建原生 PyTorch Lightning Trainer
             self.trainer = Trainer(**trainer_config)
-
-            self._log_info(
-                f"✓ PyTorch Lightning Trainer 已构建: {len(callbacks)} 个回调, {len(loggers)} 个日志器"
-            )
+            self._log_info(f"✓ PyTorch Lightning Trainer 已构建: {len(callbacks)} 个回调, {len(loggers)} 个日志器")
 
         return self.trainer
 
@@ -238,16 +233,10 @@ class ProjectManager:
             "project_name": self.config.name,
             "experiment_name": self.config.get_experiment_name(),
             "mode": self.config.mode,
-            "output_dir": str(self.output_dir),
-            "experiment_dir": str(self.experiment_dir),
-            "model_type": (
-                self.config.model.get("_target_", "Unknown")
-                if self.config.model
-                else None
-            ),
-            "callbacks_count": (
-                len(self.config.callbacks) if self.config.callbacks else 0
-            ),
+            "save_dir": str(self.save_dir),
+            "save_experiment_version_dir": str(self.save_experiment_version_dir),
+            "model_type": (self.config.model.get("_target_", "Unknown") if self.config.model else None),
+            "callbacks_count": (len(self.config.callbacks) if self.config.callbacks else 0),
             "loggers_count": (len(self.config.logging) if self.config.logging else 0),
             "has_datamodule": self.config.datamodule is not None,
             "seed": self.config.seed,
@@ -277,8 +266,8 @@ class ProjectManager:
         self._log_info("=" * 60)
         self._log_info(f"实验名称: {summary['experiment_name']}")
         self._log_info(f"运行模式: {summary['mode']}")
-        self._log_info(f"输出目录: {summary['output_dir']}")
-        self._log_info(f"实验目录: {summary['experiment_dir']}")
+        self._log_info(f"输出目录: {summary['save_dir']}")
+        self._log_info(f"实验目录: {summary['save_experiment_version_dir']}")
         self._log_info(f"模型类型: {summary.get('model_class', '未构建')}")
         self._log_info(f"回调数量: {summary['callbacks_count']}")
         self._log_info(f"日志器数量: {summary['loggers_count']}")
@@ -320,13 +309,11 @@ class ProjectBuilder:
     @staticmethod
     def quick_setup(
         model_config: Dict[str, Any],
-        output_dir: str = "./outputs",
+        save_dir: str = "./outputs",
         project_name: str = "training_project",
     ) -> ProjectManager:
         """快速设置项目"""
-        config = ProjectConfig(
-            name=project_name, output_dir=output_dir, model=model_config
-        )
+        config = ProjectConfig(name=project_name, save_dir=save_dir, model=model_config)
         return ProjectManager(config)
 
 
@@ -336,7 +323,7 @@ def create_training_project(
     callbacks_config: Optional[Dict[str, Dict[str, Any]]] = None,
     trainer_config: Optional[Dict[str, Any]] = None,
     logging_config: Optional[Dict[str, Dict[str, Any]]] = None,
-    output_dir: str = "./outputs",
+    save_dir: str = "./outputs",
     project_name: str = "training_project",
     mode: str = "train",
     **kwargs,
@@ -352,7 +339,7 @@ def create_training_project(
         callbacks_config: 回调配置字典
         trainer_config: PyTorch Lightning Trainer 配置
         logging_config: 日志器配置字典
-        output_dir: 输出目录
+        save_dir: 输出目录
         project_name: 项目名称
         mode: 运行模式 (train/validate/test/predict)
         **kwargs: 其他项目配置参数
@@ -362,7 +349,7 @@ def create_training_project(
     """
     config = ProjectConfig(
         name=project_name,
-        output_dir=output_dir,
+        save_dir=save_dir,
         model=model_config,
         datamodule=datamodule_config,
         callbacks=callbacks_config or {},

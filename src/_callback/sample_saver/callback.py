@@ -119,14 +119,8 @@ class SampleSaverCallback(Callback):
             )
 
         self.config = config
-        self.save_dir = Path(config.save_dir)
 
-        if config.auto_create_dirs:
-            self.save_dir.mkdir(parents=True, exist_ok=True)
-
-    def _get_nested_value(
-        self, data: Dict[str, Any], keys: Union[str, List[str]]
-    ) -> Any:
+    def _get_nested_value(self, data: Dict[str, Any], keys: Union[str, List[str]]) -> Any:
         """获取嵌套字典中的值
 
         Args:
@@ -150,9 +144,7 @@ class SampleSaverCallback(Callback):
 
         return result
 
-    def _should_save(
-        self, save_key_config: SaveKeyConfig, batch_idx: int, phase: str
-    ) -> bool:
+    def _should_save(self, save_key_config: SaveKeyConfig, batch_idx: int, phase: str) -> bool:
         """判断是否应该保存
 
         Args:
@@ -187,7 +179,7 @@ class SampleSaverCallback(Callback):
         Returns:
             完整的保存目录路径
         """
-        save_path = self.save_dir / phase
+        save_path = Path(self.save_dir) / "samples" / phase
 
         if self.config.dir_structure == "flat":
             # 平铺结构，不创建子目录
@@ -200,11 +192,7 @@ class SampleSaverCallback(Callback):
             save_path = save_path / f"step_{trainer.global_step}"
         elif self.config.dir_structure == "epoch_step":
             # epoch/step 两级目录
-            save_path = (
-                save_path
-                / f"epoch_{trainer.current_epoch}"
-                / f"step_{trainer.global_step}"
-            )
+            save_path = save_path / f"epoch_{trainer.current_epoch}" / f"step_{trainer.global_step}"
 
         # 自动创建目录
         if self.config.auto_create_dirs:
@@ -240,30 +228,22 @@ class SampleSaverCallback(Callback):
                     **save_key_config.custom_save_kwargs,
                 )
             else:
-                print(
-                    "Warning: Model does not implement 'save' method for custom format"
-                )
+                print("Warning: Model does not implement 'save' method for custom format")
                 return
 
         elif save_key_config.format == "image":
-            self._save_as_image(
-                data, filename_base, save_key_config.extension, save_dir
-            )
+            self._save_as_image(data, filename_base, save_key_config.extension, save_dir)
 
         elif save_key_config.format == "text":
             self._save_as_text(data, filename_base, save_key_config.extension, save_dir)
 
         elif save_key_config.format == "tensor":
-            self._save_as_tensor(
-                data, filename_base, save_key_config.extension, save_dir
-            )
+            self._save_as_tensor(data, filename_base, save_key_config.extension, save_dir)
 
         elif save_key_config.format == "json":
             self._save_as_json(data, filename_base, save_key_config.extension, save_dir)
 
-    def _save_as_image(
-        self, data: Any, filename_base: str, extension: str, save_dir: Path
-    ) -> None:
+    def _save_as_image(self, data: Any, filename_base: str, extension: str, save_dir: Path) -> None:
         """保存为图像"""
         try:
             if isinstance(data, torch.Tensor):
@@ -281,9 +261,7 @@ class SampleSaverCallback(Callback):
                         img = img.squeeze(0)
 
                     # 标准化到 0-255
-                    img = ((img - img.min()) / (img.max() - img.min()) * 255).astype(
-                        np.uint8
-                    )
+                    img = ((img - img.min()) / (img.max() - img.min()) * 255).astype(np.uint8)
 
                     filename = f"{filename_base}_{i}{extension}"
                     filepath = save_dir / filename
@@ -299,9 +277,7 @@ class SampleSaverCallback(Callback):
         except Exception as e:
             print(f"Error saving image {filename_base}: {e}")
 
-    def _save_as_text(
-        self, data: Any, filename_base: str, extension: str, save_dir: Path
-    ) -> None:
+    def _save_as_text(self, data: Any, filename_base: str, extension: str, save_dir: Path) -> None:
         """保存为文本"""
         try:
             if isinstance(data, (list, tuple)):
@@ -321,9 +297,7 @@ class SampleSaverCallback(Callback):
         except Exception as e:
             print(f"Error saving text {filename_base}: {e}")
 
-    def _save_as_tensor(
-        self, data: Any, filename_base: str, extension: str, save_dir: Path
-    ) -> None:
+    def _save_as_tensor(self, data: Any, filename_base: str, extension: str, save_dir: Path) -> None:
         """保存为张量"""
         try:
             filename = f"{filename_base}{extension}"
@@ -332,9 +306,7 @@ class SampleSaverCallback(Callback):
         except Exception as e:
             print(f"Error saving tensor {filename_base}: {e}")
 
-    def _save_as_json(
-        self, data: Any, filename_base: str, extension: str, save_dir: Path
-    ) -> None:
+    def _save_as_json(self, data: Any, filename_base: str, extension: str, save_dir: Path) -> None:
         """保存为JSON"""
         try:
             filename = f"{filename_base}{extension}"
@@ -352,9 +324,7 @@ class SampleSaverCallback(Callback):
         except Exception as e:
             print(f"Error saving JSON {filename_base}: {e}")
 
-    def _generate_filename_base(
-        self, trainer: Trainer, phase: str, save_name: str
-    ) -> str:
+    def _generate_filename_base(self, trainer: Trainer, phase: str, save_name: str) -> str:
         """生成文件名基础部分"""
         base_parts = [phase, save_name]
 
@@ -378,15 +348,14 @@ class SampleSaverCallback(Callback):
         phase: str,
     ) -> None:
         """处理所有保存键配置"""
-        # 获取当前阶段的保存目录
-        current_save_dir = self._get_save_directory(trainer, phase)
 
         for save_name, save_key_config in self.config.save_keys.items():
             try:
                 # 检查是否应该保存
                 if not self._should_save(save_key_config, batch_idx, phase):
                     continue
-
+                # 获取当前阶段的保存目录
+                current_save_dir = self._get_save_directory(trainer, phase)
                 # 获取数据
                 if save_key_config.source == "outputs":
                     data = self._get_nested_value(outputs, save_key_config.keys)
@@ -409,9 +378,7 @@ class SampleSaverCallback(Callback):
                 filename_base = self._generate_filename_base(trainer, phase, save_name)
 
                 # 保存数据（使用当前目录）
-                self._save_data(
-                    data, save_key_config, filename_base, pl_module, current_save_dir
-                )
+                self._save_data(data, save_key_config, filename_base, pl_module, current_save_dir)
 
             except Exception as e:
                 print(f"Error processing save key '{save_name}': {e}")
@@ -423,20 +390,34 @@ class SampleSaverCallback(Callback):
 
         self._process_save_keys(trainer, pl_module, outputs, batch, batch_idx, "train")
 
-    def on_validation_batch_end(
-        self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
-    ):
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         """验证批次结束时的回调"""
         if not trainer.is_global_zero:
             return
 
         self._process_save_keys(trainer, pl_module, outputs, batch, batch_idx, "val")
 
-    def on_test_batch_end(
-        self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0
-    ):
+    def on_test_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         """测试批次结束时的回调"""
         if not trainer.is_global_zero:
             return
 
         self._process_save_keys(trainer, pl_module, outputs, batch, batch_idx, "test")
+
+    def setup(self, trainer, pl_module, stage):
+        import os
+
+        if len(trainer.loggers) > 0:
+            if trainer.loggers[0].save_dir is not None:
+                save_dir = trainer.loggers[0].save_dir
+            else:
+                save_dir = trainer.default_root_dir
+            name = trainer.loggers[0].name
+            version = trainer.loggers[0].version
+            version = version if isinstance(version, str) else f"version_{version}"
+            self.save_dir = os.path.join(save_dir, str(name), version)
+        else:
+            # if no loggers, use default_root_dir
+            self.save_dir = os.path.join(trainer.default_root_dir)
+
+        return super().setup(trainer, pl_module, stage)

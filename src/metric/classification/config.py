@@ -14,7 +14,7 @@ class ClassificationMetricParams(BaseMetricParams):
     threshold: Optional[float] = Field(default=None)
     top_k: Optional[int] = Field(default=None)
     ignore_index: Optional[int] = Field(default=None)
-    mdmc_average: Optional[str] = Field(default=None)
+    # mdmc_average: Optional[str] = Field(default=None)
 
 
 @dataclass(config=ConfigDict(extra="allow"))

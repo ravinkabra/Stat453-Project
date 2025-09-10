@@ -25,7 +25,7 @@ class WandbLoggerParams(BaseLoggerParams):
     id: Optional[str] = Field(None, description="实验ID，用于恢复")
 
     # 目录参数
-    save_dir: str = Field("./wandb_logs", description="本地保存目录")
+    save_dir: Optional[str] = Field(None, description="本地保存目录")
     offline: bool = Field(False, description="离线模式")
 
     # 高级参数
@@ -42,6 +42,4 @@ class WandbLoggerParams(BaseLoggerParams):
 
     # 保存参数
     save_code: bool = Field(True, description="保存代码")
-    resume: Optional[str] = Field(
-        None, description="恢复模式: allow, must, never, auto"
-    )
+    resume: Optional[str] = Field(None, description="恢复模式: allow, must, never, auto")

@@ -55,7 +55,7 @@ class SampleSaverCallbackConfig:
     _target_: str = Field(
         default="src._callback.sample_saver.callback.SampleSaverCallback"
     )
-    save_dir: str = Field(default="./samples", description="保存根目录")
+    save_dir: Optional[str] = Field(default=None, description="保存根目录，如果为空，指定为trainer的 default_root_dir")
     save_keys: Dict[str, SaveKeyConfig] = Field(
         default_factory=dict, description="保存配置字典"
     )

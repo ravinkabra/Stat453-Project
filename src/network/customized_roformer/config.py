@@ -1,9 +1,10 @@
 from typing import Literal
 from ..base.config import dataclass, Field
+from pydantic.dataclasses import ConfigDict
 from transformers.models.roformer.configuration_roformer import RoFormerConfig
 
 
-@dataclass
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class CustomizedRoFormerEncoderParams:
     """Params-style config for RoFormer encoder (customized name).
 

@@ -30,59 +30,39 @@ class ModelCheckpointParams:
     )
 
     # 基本保存配置
-    dirpath: Optional[Union[str, Any]] = Field(
-        default="./checkpoints", description="检查点保存目录路径"
-    )
+    dirpath: Optional[Union[str, Any]] = Field(default=None, description="检查点保存目录路径")
     filename: Optional[str] = Field(
         default=None,
         description="检查点文件名模板，支持格式化字符串，如 'best-{epoch:02d}-{val_loss:.2f}'",
     )
 
     # 监控和保存策略
-    monitor: Optional[str] = Field(
-        default=None, description="监控的指标名称，如 'val_loss', 'val_acc'"
-    )
-    save_top_k: Union[int, Literal[-1]] = Field(
-        default=1, description="保存最好的 k 个检查点，-1 表示保存所有"
-    )
+    monitor: Optional[str] = Field(default=None, description="监控的指标名称，如 'val_loss', 'val_acc'")
+    save_top_k: Union[int, Literal[-1]] = Field(default=1, description="保存最好的 k 个检查点，-1 表示保存所有")
     mode: Literal["min", "max"] = Field(
         default="min",
         description="监控模式，'min' 表示监控值越小越好，'max' 表示越大越好",
     )
-    save_last: Optional[bool] = Field(
-        default=None, description="是否保存最后一个检查点"
-    )
+    save_last: Optional[bool] = Field(default=None, description="是否保存最后一个检查点")
 
     # 保存条件和频率
-    every_n_train_steps: Optional[int] = Field(
-        default=None, description="每 N 个训练步骤保存一次"
-    )
-    every_n_epochs: Optional[int] = Field(
-        default=None, description="每 N 个 epoch 保存一次"
-    )
+    every_n_train_steps: Optional[int] = Field(default=None, description="每 N 个训练步骤保存一次")
+    every_n_epochs: Optional[int] = Field(default=None, description="每 N 个 epoch 保存一次")
     train_time_interval: Optional[Union[str, Any]] = Field(
         default=None,
         description="训练时间间隔保存，如 '00:00:30:00' 表示每30分钟保存一次",
     )
 
     # 文件管理
-    auto_insert_metric_name: bool = Field(
-        default=True, description="是否自动在文件名中插入指标名称"
-    )
-    save_weights_only: bool = Field(
-        default=False, description="是否只保存模型权重，不保存优化器状态"
-    )
+    auto_insert_metric_name: bool = Field(default=True, description="是否自动在文件名中插入指标名称")
+    save_weights_only: bool = Field(default=False, description="是否只保存模型权重，不保存优化器状态")
 
     # 高级配置
-    save_on_train_epoch_end: Optional[bool] = Field(
-        default=None, description="是否在训练 epoch 结束时保存"
-    )
+    save_on_train_epoch_end: Optional[bool] = Field(default=None, description="是否在训练 epoch 结束时保存")
     enable_version_counter: bool = Field(default=True, description="是否启用版本计数器")
 
     # 自定义参数
-    custom_save_kwargs: Dict[str, Any] = Field(
-        default_factory=dict, description="传递给 ModelCheckpoint 的其他参数"
-    )
+    custom_save_kwargs: Dict[str, Any] = Field(default_factory=dict, description="传递给 ModelCheckpoint 的其他参数")
 
 
 # 预定义配置函数

@@ -7,6 +7,7 @@ from pydantic import Field, model_validator
 from typing import Dict, Any, Optional, List, Literal
 
 import dataclasses
+import copy
 import os
 
 try:
@@ -37,11 +38,20 @@ class ProjectConfig:
     # 项目元信息
     name: str = Field(default="training_project", description="项目名称")
     description: str = Field(default="", description="项目描述")
-    version: str = Field(default="1.0.0", description="项目版本")
 
     # 输出设置
-    output_dir: str = Field(default="./outputs", description="输出根目录")
-    experiment_name: Optional[str] = Field(default=None, description="实验名称，None则使用项目名称")
+    save_dir: str = Field(default="./outputs", description="输出根目录，如果logger的save_dir为None，则用此覆盖")
+    experiment_name: Optional[str] = Field(
+        default=None, description="实验名称，None则使用项目名称，如果logger的name为None，则用此覆盖"
+    )
+    version: Optional[str] = Field(
+        default=None,
+        description="项目版本，如果version存在目标的文件夹中，不做额外修改，如果为其他格式则为{version}x,如果为none则是version_x，如果logger的version为None，则用此覆盖",
+    )
+    save_experiment_version_dir: Optional[str] = Field(
+        default=None,
+        description="最终影响保存位置的参数，同trainer的default_root_dir，如果为None则自动推断为{save_dir}/{experiment_name}/{version}",
+    )
 
     # 核心组件配置
     model: UnionModelConfig = Field(description="模型配置")
@@ -73,13 +83,37 @@ class ProjectConfig:
         """获取实验名称"""
         return self.experiment_name or self.name
 
-    def to_dict(self, exclude_none: bool = True) -> Dict[str, Any]:
+    def _save_original_conifg(self) -> None:
+        # Use a deep copy to preserve the original config object.
+        # Re-instantiating from a dict can attempt to set read-only properties
+        # on nested objects (for example HuggingFace `RoFormerConfig.use_return_dict`),
+        # which raises AttributeError. deepcopy avoids re-running constructors.
+        self._original_config = copy.deepcopy(self)
+
+    def to_dict(
+        self,
+        exclude_none: bool = True,
+        exclude_original_config: bool = True,
+        use_original_config: bool = False,
+    ) -> Dict[str, Any]:
         """把 ProjectConfig 转成原生 Python 字典。
 
         - 使用 dataclasses.asdict 递归地把 dataclass 转为 dict。
         - 当 exclude_none=True 时，会递归移除值为 None 的条目，便于生成更简洁的 yaml。
+        - 新增参数 `use_original_config`：当为 True 且实例保存了 `_original_config` 时，
+          会把保存的原始配置作为序列化对象（而不是当前可能已被修改的实例）。
         """
-        result = dataclasses.asdict(self)
+
+        # 支持序列化原始保存的配置或当前实例（向后兼容：默认序列化当前实例）
+        source = (
+            getattr(self, "_original_config") if (use_original_config and hasattr(self, "_original_config")) else self
+        )
+        result = dataclasses.asdict(source)
+
+        # 可选：从序列化结果中排除内部保存的原始配置对象（以避免把不可序列化或只读属性一并写出）
+        if exclude_original_config and "_original_config" in result:
+            # 如果原始配置存在，移除它（do not serialize internal state by default）
+            result.pop("_original_config", None)
 
         if not exclude_none:
             return result
@@ -99,12 +133,19 @@ class ProjectConfig:
 
         return _clean(result)
 
-    def to_yaml(self, path: Optional[str] = None, sort_keys: bool = False) -> str:
+    def to_yaml(
+        self,
+        path: Optional[str] = None,
+        sort_keys: bool = False,
+        exclude_original_config: bool = True,
+        use_original_config: bool = False,
+    ) -> str:
         """把 ProjectConfig 导出为 YAML 字符串，并可选择写入文件。
 
         Args:
             path: 如果提供，将把 YAML 写入到该路径（会创建父目录）。
             sort_keys: 是否对字典的键进行排序写入。
+            use_original_config: 是否序列化保存的 `_original_config` 而不是当前实例。
 
         Returns:
             生成的 YAML 字符串。
@@ -112,7 +153,12 @@ class ProjectConfig:
         注意:
             该方法依赖 PyYAML（yaml）。若未安装，会退回到使用 str() 表示对象并生成简单字符串。
         """
-        data = self.to_dict(exclude_none=True)
+        # 将 exclude_original_config 和 use_original_config 传递给 to_dict，以控制序列化内容
+        data = self.to_dict(
+            exclude_none=True,
+            exclude_original_config=exclude_original_config,
+            use_original_config=use_original_config,
+        )
 
         # 如果 PyYAML 可用，使用它并为不可序列化对象提供默认的字符串表示。
         if yaml is not None:
@@ -146,232 +192,29 @@ class ProjectConfig:
 
         return yaml_str
 
+    def _setup_logger_save_dirs(self):
+        for name, logger_config in self.loggers.items():
+            if logger_config.save_dir is None:
+                logger_config.save_dir = self.save_dir
+
+    def _setup_logger_names(self):
+        for name, logger_config in self.loggers.items():
+            if logger_config.name is None:
+                logger_config.name = self.experiment_name
+
+    def _setup_logger_versions(self):
+        if self.version is not None:
+            compute_and_set_versions(self.loggers, self.save_dir, self.experiment_name, version=self.version)
+
     @model_validator(mode="after")
-    def _set_logger_versions(self) -> "ProjectConfig":
-        """在模型验证后的钩子中（创建时）尝试统一 logger 的 name/version。
+    def _post_init(self) -> "ProjectConfig":
+        self._save_original_conifg()
 
-        该方法为非破坏性 best-effort：如果发生任何错误会被吞掉，且
-        实际的文件系统扫描/写操作由 `compute_and_set_versions` 在 rank0
-        上执行（decorator 保证）。这样在 `ProjectConfig` 实例化后，
-        在创建 `ProjectManager` 之前 logger 的 version 应已被填充。"""
-        try:
-            if getattr(self, "loggers", None):
-                compute_and_set_versions(self.loggers, self.output_dir or "./outputs", self.get_experiment_name())
-        except Exception:
-            # best-effort，不让验证失败
-            pass
+        if self.experiment_name is None:
+            self.experiment_name = self.name
+        self.save_experiment_version_dir = os.path.join(self.save_dir, self.name, self.version)
+        if self.loggers:
+            self._setup_logger_save_dirs()
+            self._setup_logger_names()
+            self._setup_logger_versions()
         return self
-
-    def unify_logger_versions_and_names(self) -> Optional[str]:
-        """Ensure configured loggers have `name` and `version` set.
-
-        This will call into the rank-zero-only helper `compute_and_set_versions`
-        which computes a next version string based on `output_dir` and
-        project name and applies it to logger configs. The helper is
-        decorated with `rank_zero_only` so only the main process computes
-        and sets versions in distributed runs; other ranks will see the
-        values once the filesystem/loggers are synchronized.
-
-        Returns the computed version string on success, or None.
-        """
-        if not self.loggers:
-            return None
-
-        base_save_dir = self.output_dir or "./outputs"
-        project_name = self.get_experiment_name()
-
-        try:
-            version = compute_and_set_versions(self.loggers, base_save_dir, project_name)
-            return version
-        except Exception:
-            # best-effort: don't fail the whole program if versioning fails
-            return None
-
-
-# 预定义的项目配置示例
-def get_unet_project_config() -> ProjectConfig:
-    """UNet 图像分割项目配置示例 - 完全使用 PyTorch Lightning 原生配置"""
-    return ProjectConfig(
-        name="unet_segmentation",
-        description="UNet图像分割训练项目",
-        output_dir="./outputs/unet_experiments",
-        # 模型配置
-        model={
-            "_target_": "src.model.example.model.UNetModel",
-            "in_channels": 3,
-            "out_channels": 1,
-            "optimizer": {"_target_": "torch.optim.Adam", "lr": 0.001},
-        },
-        # 数据模块配置
-        datamodule={
-            "_target_": "src.datamodule.example.ImageSegmentationDataModule",
-            "data_dir": "./data/segmentation",
-            "batch_size": 16,
-        },
-        # PyTorch Lightning Trainer 原生配置
-        trainer={
-            "max_epochs": 100,
-            "devices": "auto",
-            "accelerator": "auto",
-            "precision": "16-mixed",
-            "log_every_n_steps": 10,
-            "val_check_interval": 0.5,
-            "enable_checkpointing": True,
-            "enable_progress_bar": True,
-            "enable_model_summary": True,
-        },
-        # 回调配置
-        callbacks={
-            "sample_saver": {
-                "_target_": "src.callback.sample_saver.callback.TrainingSampleSaverCallback",
-                "save_dir": "./outputs/unet_experiments/samples",
-                "save_keys": {
-                    "predictions": {
-                        "source": "outputs",
-                        "keys": ["predictions"],
-                        "format": "image",
-                        "extension": ".png",
-                    }
-                },
-            },
-            "model_checkpoint": {
-                "_target_": "pytorch_lightning.callbacks.ModelCheckpoint",
-                "dirpath": "./outputs/unet_experiments/checkpoints",
-                "filename": "unet-{epoch:02d}-{val_loss:.2f}",
-                "monitor": "val_loss",
-                "mode": "min",
-                "save_top_k": 3,
-                "save_last": True,
-            },
-            "early_stopping": {
-                "_target_": "pytorch_lightning.callbacks.EarlyStopping",
-                "monitor": "val_loss",
-                "patience": 10,
-                "mode": "min",
-                "verbose": True,
-            },
-            "lr_monitor": {
-                "_target_": "pytorch_lightning.callbacks.LearningRateMonitor",
-                "logging_interval": "step",
-            },
-        },
-        # 日志器配置
-        logging={
-            "tensorboard": {
-                "_target_": "pytorch_lightning.loggers.TensorBoardLogger",
-                "save_dir": "./outputs/unet_experiments/logs",
-                "name": "tensorboard",
-            },
-            "csv": {
-                "_target_": "pytorch_lightning.loggers.CSVLogger",
-                "save_dir": "./outputs/unet_experiments/logs",
-                "name": "csv_logs",
-            },
-        },
-        # 实验管理
-        tags=["unet", "segmentation", "medical"],
-        seed=42,
-        deterministic=True,
-    )
-
-
-def get_llm_project_config() -> ProjectConfig:
-    """大语言模型训练项目配置示例"""
-    return ProjectConfig(
-        name="llm_training",
-        description="大语言模型训练项目",
-        output_dir="./outputs/llm_experiments",
-        # 模型配置
-        model={
-            "_target_": "src.model.example.model.LLMModel",
-            "vocab_size": 50257,
-            "hidden_size": 768,
-            "num_layers": 12,
-            "num_heads": 12,
-            "optimizer": {
-                "_target_": "torch.optim.AdamW",
-                "lr": 5e-5,
-                "weight_decay": 0.01,
-            },
-            "lr_scheduler": {
-                "_target_": "torch.optim.lr_scheduler.CosineAnnealingLR",
-                "T_max": 1000,
-            },
-        },
-        # 数据模块配置
-        datamodule={
-            "_target_": "src.datamodule.example.TextDataModule",
-            "data_dir": "./data/text",
-            "batch_size": 32,
-            "max_length": 512,
-        },
-        # PyTorch Lightning Trainer 原生配置
-        trainer={
-            "max_epochs": 10,
-            "devices": [0, 1],  # 使用两个GPU
-            "accelerator": "gpu",
-            "strategy": "ddp",  # 分布式训练
-            "precision": "16-mixed",
-            "accumulate_grad_batches": 4,
-            "gradient_clip_val": 1.0,
-            "log_every_n_steps": 50,
-            "val_check_interval": 1000,
-        },
-        # 回调配置
-        callbacks={
-            "model_checkpoint": {
-                "_target_": "pytorch_lightning.callbacks.ModelCheckpoint",
-                "dirpath": "./outputs/llm_experiments/checkpoints",
-                "filename": "llm-{epoch:02d}-{val_perplexity:.2f}",
-                "monitor": "val_perplexity",
-                "mode": "min",
-                "save_top_k": 2,
-                "save_last": True,
-                "every_n_train_steps": 500,
-            },
-            "lr_monitor": {
-                "_target_": "pytorch_lightning.callbacks.LearningRateMonitor",
-                "logging_interval": "step",
-            },
-        },
-        # 日志器配置
-        logging={
-            "wandb": {
-                "_target_": "pytorch_lightning.loggers.WandbLogger",
-                "project": "llm-training",
-                "name": "llm-experiment",
-            },
-        },
-        # 实验管理
-        tags=["llm", "transformer", "language-model"],
-        seed=42,
-        deterministic=False,  # LLM训练通常不需要完全确定性
-    )
-
-
-# 便捷构建函数
-def create_simple_config(
-    model_config: Dict[str, Any],
-    project_name: str = "simple_project",
-    output_dir: str = "./outputs",
-    max_epochs: int = 10,
-    **kwargs,
-) -> ProjectConfig:
-    """创建简单的项目配置"""
-
-    # 默认的 Trainer 配置
-    trainer_config = {
-        "max_epochs": max_epochs,
-        "devices": "auto",
-        "accelerator": "auto",
-        "enable_progress_bar": True,
-        "enable_model_summary": True,
-    }
-
-    return ProjectConfig(
-        name=project_name,
-        output_dir=output_dir,
-        model=model_config,
-        trainer=trainer_config,
-        **kwargs,
-    )

@@ -19,8 +19,8 @@ class TensorBoardLoggerParams(BaseLoggerParams):
     )
 
     # 基础参数
-    save_dir: str = Field("./tb_logs", description="保存目录")
-    name: str = Field("lightning_logs", description="实验名称")
+    save_dir: Optional[str] = Field(None, description="保存目录")
+    name: Optional[str] = Field(None, description="实验名称")
     default_hp_metric: bool = Field(True, description="是否记录默认超参数指标")
 
     # 高级参数

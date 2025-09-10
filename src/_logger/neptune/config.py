@@ -33,7 +33,5 @@ class NeptuneLoggerParams(BaseLoggerParams):
     source_files: Optional[List[str]] = Field(None, description="源代码文件")
 
     # 保存参数
-    save_dir: str = Field("./neptune_logs", description="本地保存目录")
-    mode: str = Field(
-        "async", description="运行模式: async, sync, offline, read-only, debug"
-    )
+    save_dir: Optional[str] = Field(None, description="本地保存目录")
+    mode: str = Field("async", description="运行模式: async, sync, offline, read-only, debug")

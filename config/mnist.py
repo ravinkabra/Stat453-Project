@@ -51,9 +51,7 @@ test_dataset = MnistDatasetConfig(
     data_dir="./data/mnist",
     dataset_range=[0.0, 1.0],
 )
-datamodule = BaseDataModuleConfig(
-    train=train_dataset, val=val_dataset, test=test_dataset
-)
+datamodule = BaseDataModuleConfig(train=train_dataset, val=val_dataset, test=test_dataset)
 
 network = LeNetConfig(in_channels=1, num_classes=10)
 optimizer = AdamParams(_target_="torch.optim.Adam", lr=1e-3, weight_decay=1e-5)
@@ -84,18 +82,10 @@ metric_manager = MetricManagerConfig(
                 on_step=True,
             ),
             metrics={
-                "accuracy": AccuracyParams(
-                    task="multiclass", num_classes=10, average="macro"
-                ),
-                "f1_score": F1ScoreParams(
-                    task="multiclass", num_classes=10, average="macro"
-                ),
-                "precision": PrecisionParams(
-                    task="multiclass", num_classes=10, average="macro"
-                ),
-                "recall": RecallParams(
-                    task="multiclass", num_classes=10, average="macro"
-                ),
+                "accuracy": AccuracyParams(task="multiclass", num_classes=10, average="macro", top_k=1),
+                "f1_score": F1ScoreParams(task="multiclass", num_classes=10, average="macro", top_k=1),
+                "precision": PrecisionParams(task="multiclass", num_classes=10, average="macro", top_k=1),
+                "recall": RecallParams(task="multiclass", num_classes=10, average="macro", top_k=1),
             },
         ),
     }
@@ -107,12 +97,8 @@ model = MnistModelConfig(
     metric_manager=metric_manager,
 )
 loggers = {
-    "csv": CSVLoggerParams(
-        save_dir="./output/mnist_example/logs", flush_logs_every_n_steps=50, version=0
-    ),
-    "tensorboard": TensorBoardLoggerParams(
-        save_dir="./output/mnist_example/logs", version=0
-    ),
+    "csv": CSVLoggerParams(flush_logs_every_n_steps=50),
+    "tensorboard": TensorBoardLoggerParams(),
 }
 trainer = BaseTrainerConfig(
     max_epochs=3,
@@ -120,7 +106,7 @@ trainer = BaseTrainerConfig(
 )
 callbacks = {
     "sample_saver": SampleSaverCallbackConfig(
-        save_dir="./output/mnist_example/samples",
+        dir_structure="epoch_step",
         save_keys={
             "image": SaveKeyConfig(
                 source="batch",
@@ -151,7 +137,7 @@ callbacks = {
 }
 project = ProjectConfig(
     project_name="MNIST-Example",
-    output_dir="./output/mnist_example",
+    save_dir="./output/mnist_example",
     log_level="INFO",
     experiment_name="mnist_experiment",
     datamodule=datamodule,
@@ -160,6 +146,8 @@ project = ProjectConfig(
     loggers=loggers,
     callbacks=callbacks,
     trainer=trainer,
+    version="0.0.",
 )
 
-project.to_yaml("./config/mnist.yaml")
+# project._save_original_conifg()
+project.to_yaml("./config/mnist.yaml",use_original_config=True)

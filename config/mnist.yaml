@@ -1,8 +1,8 @@
 name: training_project
 description: ''
-version: 1.0.0
-output_dir: ./output/mnist_example
+save_dir: ./output/mnist_example
 experiment_name: mnist_experiment
+version: 0.0.
 model:
   _target_: src.model.tutorial_mnist.model.MnistModel
   optimizer:
@@ -50,21 +50,25 @@ model:
             task: multiclass
             num_classes: 10
             average: macro
+            top_k: 1
           f1_score:
             _target_: torchmetrics.classification.F1Score
             task: multiclass
             num_classes: 10
             average: macro
+            top_k: 1
           precision:
             _target_: torchmetrics.classification.Precision
             task: multiclass
             num_classes: 10
             average: macro
+            top_k: 1
           recall:
             _target_: torchmetrics.classification.Recall
             task: multiclass
             num_classes: 10
             average: macro
+            top_k: 1
         log_config:
           phase:
           - train
@@ -154,7 +158,6 @@ trainer:
 callbacks:
   sample_saver:
     _target_: src._callback.sample_saver.callback.SampleSaverCallback
-    save_dir: ./output/mnist_example/samples
     save_keys:
       image:
         source: batch
@@ -195,24 +198,18 @@ callbacks:
     - val
     use_epoch_dirs: true
     use_step_dirs: false
-    dir_structure: epoch
+    dir_structure: epoch_step
     auto_create_dirs: true
     add_timestamp: true
     add_step_info: true
 loggers:
   csv:
     _target_: pytorch_lightning.loggers.CSVLogger
-    version: 0
     prefix: ''
-    save_dir: ./output/mnist_example/logs
-    name: lightning_logs
     flush_logs_every_n_steps: 50
   tensorboard:
     _target_: pytorch_lightning.loggers.TensorBoardLogger
-    version: 0
     prefix: ''
-    save_dir: ./output/mnist_example/logs
-    name: lightning_logs
     default_hp_metric: true
     log_graph: false
     filename_suffix: ''
