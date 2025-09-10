@@ -3,7 +3,7 @@
 """
 
 from pydantic.dataclasses import dataclass, ConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 from typing import Dict, Any, Optional, List, Literal
 
 import dataclasses
@@ -19,6 +19,7 @@ from ..._datamodule import UnionDataModuleConfig
 from ..._trainer import UnionTrainerConfig
 from ..._callback import UnionCallbackConfig
 from ...model import UnionModelConfig
+from ._utils import compute_and_set_versions
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -40,25 +41,17 @@ class ProjectConfig:
 
     # 输出设置
     output_dir: str = Field(default="./outputs", description="输出根目录")
-    experiment_name: Optional[str] = Field(
-        default=None, description="实验名称，None则使用项目名称"
-    )
+    experiment_name: Optional[str] = Field(default=None, description="实验名称，None则使用项目名称")
 
     # 核心组件配置
     model: UnionModelConfig = Field(description="模型配置")
-    datamodule: Optional[UnionDataModuleConfig] = Field(
-        default=None, description="数据模块配置"
-    )
+    datamodule: Optional[UnionDataModuleConfig] = Field(default=None, description="数据模块配置")
 
     # PyTorch Lightning Trainer 配置
-    trainer: Optional[UnionTrainerConfig] = Field(
-        default=None, description="PyTorch Lightning Trainer 原生配置"
-    )
+    trainer: Optional[UnionTrainerConfig] = Field(default=None, description="PyTorch Lightning Trainer 原生配置")
 
     # 回调配置
-    callbacks: Optional[dict[str, UnionCallbackConfig]] = Field(
-        default=None, description="回调配置字典，key为回调名称"
-    )
+    callbacks: Optional[dict[str, UnionCallbackConfig]] = Field(default=None, description="回调配置字典，key为回调名称")
 
     # 日志器配置 - 使用类型化的 logger 配置
     loggers: Optional[Dict[str, UnionLoggerParams]] = Field(
@@ -66,9 +59,7 @@ class ProjectConfig:
     )
 
     # 运行模式
-    mode: Literal["train", "validate", "test", "predict"] = Field(
-        default="train", description="运行模式"
-    )
+    mode: Literal["train", "validate", "test", "predict"] = Field(default="train", description="运行模式")
 
     # 实验管理
     tags: List[str] = Field(default_factory=list, description="实验标签")
@@ -154,6 +145,47 @@ class ProjectConfig:
                 f.write(yaml_str)
 
         return yaml_str
+
+    @model_validator(mode="after")
+    def _set_logger_versions(self) -> "ProjectConfig":
+        """在模型验证后的钩子中（创建时）尝试统一 logger 的 name/version。
+
+        该方法为非破坏性 best-effort：如果发生任何错误会被吞掉，且
+        实际的文件系统扫描/写操作由 `compute_and_set_versions` 在 rank0
+        上执行（decorator 保证）。这样在 `ProjectConfig` 实例化后，
+        在创建 `ProjectManager` 之前 logger 的 version 应已被填充。"""
+        try:
+            if getattr(self, "loggers", None):
+                compute_and_set_versions(self.loggers, self.output_dir or "./outputs", self.get_experiment_name())
+        except Exception:
+            # best-effort，不让验证失败
+            pass
+        return self
+
+    def unify_logger_versions_and_names(self) -> Optional[str]:
+        """Ensure configured loggers have `name` and `version` set.
+
+        This will call into the rank-zero-only helper `compute_and_set_versions`
+        which computes a next version string based on `output_dir` and
+        project name and applies it to logger configs. The helper is
+        decorated with `rank_zero_only` so only the main process computes
+        and sets versions in distributed runs; other ranks will see the
+        values once the filesystem/loggers are synchronized.
+
+        Returns the computed version string on success, or None.
+        """
+        if not self.loggers:
+            return None
+
+        base_save_dir = self.output_dir or "./outputs"
+        project_name = self.get_experiment_name()
+
+        try:
+            version = compute_and_set_versions(self.loggers, base_save_dir, project_name)
+            return version
+        except Exception:
+            # best-effort: don't fail the whole program if versioning fails
+            return None
 
 
 # 预定义的项目配置示例

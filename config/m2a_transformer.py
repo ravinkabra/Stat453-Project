@@ -63,36 +63,13 @@ metric_manager = MetricManagerConfig(
                 phase=["train", "val"],
                 prog_bar=True,
                 update_frequency=5,
-                on_step=True,
+                # on_step=True,
             ),
             metrics={
                 "loss": ValueRecorderParams(),
                 "learning_rate": ValueRecorderParams(),
             },
         ),
-        # "classification": ManagedMetricConfig(
-        #     log_config=MetricLogConfig(
-        #         phase=["train"],
-        #         prog_bar=True,
-        #         update_frequency=1,
-        #         compute_frequency=1,
-        #         on_step=True,
-        #     ),
-        #     metrics={
-        #         "accuracy": AccuracyParams(
-        #             task="multiclass", num_classes=10, average="macro"
-        #         ),
-        #         "f1_score": F1ScoreParams(
-        #             task="multiclass", num_classes=10, average="macro"
-        #         ),
-        #         "precision": PrecisionParams(
-        #             task="multiclass", num_classes=10, average="macro"
-        #         ),
-        #         "recall": RecallParams(
-        #             task="multiclass", num_classes=10, average="macro"
-        #         ),
-        #     },
-        # ),
     }
 )
 from transformers.models.roformer import RoFormerConfig
@@ -136,12 +113,12 @@ model = OldPtM2ATransformerConfig(
     metric_manager=metric_manager,
 )
 loggers = {
-    "csv": CSVLoggerParams(save_dir="./output/mnist_example/logs", flush_logs_every_n_steps=50, version=0),
+    "csv": CSVLoggerParams(save_dir="./output/mnist_example/logs", flush_logs_every_n_steps=1000, version=0),
     "tensorboard": TensorBoardLoggerParams(save_dir="./output/mnist_example/logs", version=0),
 }
 trainer = BaseTrainerConfig(
     max_epochs=3,
-    log_every_n_steps=5,
+    log_every_n_steps=500,
 )
 callbacks = {
     # "sample_saver": SampleSaverCallbackConfig(

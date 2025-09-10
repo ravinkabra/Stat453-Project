@@ -15,5 +15,5 @@ class BaseLoggerParams(DictAccessMixin):
     """
 
     _target_: str = Field(..., description="Logger 类的完整路径")
-    version: Optional[Union[int, str]] = Field(None, description="实验版本")
+    version: Optional[Union[int, str]] = Field(None, description="实验版本, None 则由Project自动编号")
     prefix: str = Field("", description="日志前缀")

@@ -203,6 +203,35 @@ class OldPtM2ATransformer(BaseModel):
         self._future_mask = self._future_mask.to(tensor)
         return self._future_mask[:dim, :dim]
 
+    def _generate_local_and_update_h(
+        self, h: torch.Tensor, subseq_len: int, temperature: float = 1.0, token_type_one: bool = True
+    ):
+        """Helper: run global model to get local context, sample local tokens, and append their encoding to h.
+
+        Returns (y_next, new_h) where:
+        - y_next: [B, L] generated token ids for the local subsequence
+        - new_h: the updated global-level tensor h with the new local summary appended (shape [B,1,H])
+
+        token_type_one controls whether the token_type_ids passed to local_encode are ones or zeros
+        (the codebase uses ones for accompaniment frames and zeros for melody frames).
+        """
+        # Run the global encoder to obtain the next-step hidden for the last position
+        h_out = self.model(h, attention_mask=self.buffered_future_mask(h), interleave_pos=True)[0]
+        # Sample a local subsequence from the local decoder using the last global hidden
+        y_next = self.local_sampling(h_out[:, -1], max_subseq_len=subseq_len, temperature=temperature)
+
+        # Build token_type_ids expected by local_encode: shape [B, 1, L+1]
+        b, s, L = y_next.unsqueeze(1).shape
+        if token_type_one:
+            token_type_ids = torch.ones((b, s, L + 1), dtype=torch.long, device=y_next.device)
+        else:
+            token_type_ids = torch.zeros((b, s, L + 1), dtype=torch.long, device=y_next.device)
+
+        # Encode the newly sampled local tokens to get their global summary and append to h
+        local_h = self.local_encode(y_next.unsqueeze(1), token_type_ids=token_type_ids)[0].unsqueeze(1)
+        h = torch.cat([h, local_h], dim=1)
+        return y_next, h
+
     def forward(self, x: torch.LongTensor):
         """主前向函数：执行局部编码 -> 合并 -> 全局编码 -> 局部解码 的流程。
 
@@ -288,42 +317,40 @@ class OldPtM2ATransformer(BaseModel):
         acc = batch.acc_data
         pitch_shift = batch.pitch_shift
         loss = self.loss(mel, acc, pitch_shift)
-        self.log(
-            "train_loss",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            sync_dist=True,
+        safe_lr = None
+        try:
+            sched = self.lr_schedulers()
+            safe_lr = sched.get_last_lr()[0] if sched else None
+        except Exception:
+            safe_lr = None
+        self.metric_manager.update(
+            self,
+            batch_idx,
+            group_name="training_state",
+            loss=loss,
+            learning_rate=safe_lr,
         )
-        scheduler = self.lr_schedulers()
-        if scheduler:
-            scheduler.step()
-            self.log(
-                "training/lr",
-                scheduler.get_last_lr()[0],
-                on_step=True,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-                sync_dist=True,
-            )
+        self.metric_manager.log(self, phase="train", batch_idx=batch_idx)
         return loss
+    
+    def save(self, data, filename_base, extension, save_dir, **kwargs):
+        return super().save(data, filename_base, extension, save_dir, **kwargs)
 
     def validation_step(self, batch: OldPtModelInput, batch_idx: int):
         mel = batch.mel_data
         acc = batch.acc_data
         pitch_shift = batch.pitch_shift
         loss = self.loss(mel, acc, pitch_shift)
-        self.log(
-            "val_loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            sync_dist=True,
+        self.metric_manager.update(
+            self,
+            batch_idx,
+            group_name="training_state",
+            loss=loss,
+        )
+        self.metric_manager.log(
+            self,
+            phase="val",
+            batch_idx=batch_idx,
         )
         return loss
 
@@ -352,15 +379,11 @@ class OldPtM2ATransformer(BaseModel):
                     # print('Sampling', i, '/', max_seq_len)
                     ...
                 if i % 2 == 0:
-                    h_out = self.model(h, attention_mask=self.buffered_future_mask(h), interleave_pos=True)[0]
-                    y_next = self.local_sampling(h_out[:, -1], max_subseq_len=subseq_len, temperature=temperature)
-                    y.append(y_next)
-                    b, s, l = y_next.unsqueeze(1).shape
-                    token_type_ids = torch.ones((b, s, l + 1), dtype=torch.long, device=y_next.device)
-                    h = torch.cat(
-                        [h, self.local_encode(y_next.unsqueeze(1), token_type_ids=token_type_ids)[0].unsqueeze(1)],
-                        dim=1,
+                    # generate accompaniment for this timestep and append its summary to global h
+                    y_next, h = self._generate_local_and_update_h(
+                        h, subseq_len=subseq_len, temperature=temperature, token_type_one=True
                     )
+                    y.append(y_next)
                 else:
                     # token_type_ids = torch.zeros((b, s, l+1), dtype=torch.long, device=y_next.device)
                     h_prev_mel = h_mel[:, i // 2, :].unsqueeze(1)  # [B, 1, H]
@@ -368,19 +391,12 @@ class OldPtM2ATransformer(BaseModel):
                     y.append(x_mel_gt[:, i // 2, :])
         else:
             for i in range(0, max_seq_len):
-                # if i % 10 == 0:
-                #     print('Sampling', i, '/', max_seq_len)
-                h_out = self.model(h, attention_mask=self.buffered_future_mask(h), interleave_pos=True)[0]
-                y_next = self.local_sampling(h_out[:, -1], max_subseq_len=subseq_len, temperature=temperature)
-                y.append(y_next)
-                b, s, l = y_next.unsqueeze(1).shape
-                if i % 2 == 0:
-                    token_type_ids = torch.ones((b, s, l + 1), dtype=torch.long, device=y_next.device)
-                else:
-                    token_type_ids = torch.zeros((b, s, l + 1), dtype=torch.long, device=y_next.device)
-                h = torch.cat(
-                    [h, self.local_encode(y_next.unsqueeze(1), token_type_ids=token_type_ids)[0].unsqueeze(1)], dim=1
+                # alternate between generating accompaniment (even i) and inserting melody summary (odd i)
+                token_one = i % 2 == 0
+                y_next, h = self._generate_local_and_update_h(
+                    h, subseq_len=subseq_len, temperature=temperature, token_type_one=token_one
                 )
+                y.append(y_next)
         return y
 
     def global_sampling_from_scratch(self, x_mel: torch.LongTensor, temperature: float = 1.0, max_seq_len=384):
@@ -409,15 +425,158 @@ class OldPtM2ATransformer(BaseModel):
                 h = torch.cat([h, h_prev_mel], dim=1)  # [B, cur_len, H]
                 y.append(x_mel[:, t - 1, :])
 
-            h_out = self.model(h, attention_mask=self.buffered_future_mask(h), interleave_pos=True)[0]
-            y_next = self.local_sampling(h_out[:, -1], max_subseq_len=L, temperature=temperature)
+            # generate accompaniment for this melody timestep and append its summary to global h
+            y_next, h = self._generate_local_and_update_h(h, subseq_len=L, temperature=temperature, token_type_one=True)
             y.append(y_next)
-            b, s, l = y_next.unsqueeze(1).shape
-            token_type_ids = torch.ones((b, s, l + 1), dtype=torch.long, device=y_next.device)
-            h = torch.cat(
-                [h, self.local_encode(y_next.unsqueeze(1), token_type_ids=token_type_ids)[0].unsqueeze(1)], dim=1
-            )
         return y  # list of S tensors [B, L]
+
+    # ----- Inference helpers (generation + saving) -----
+    def generate(
+        self,
+        x: torch.LongTensor = None,
+        x_mel_gt: torch.LongTensor = None,
+        prompt_length: int = 0,
+        generation_length: int = 384,
+        temperature: float = 1.0,
+        n_samples: int = 1,
+        from_scratch: bool = False,
+        gt_mel: bool = True,
+    ):
+        """Unified generation entrypoint.
+
+        - from_scratch=True: expects `x_mel_gt` (mel frames) and will call
+          `global_sampling_from_scratch` (returns list of timesteps [B, L]).
+        - from_scratch=False: expects `x` (stacked acc/mel frames) and optional
+          `x_mel_gt` for teacher-forced mel frames; calls `global_sampling`.
+
+        Returns the raw list-of-timesteps output (each entry is a Tensor [B, L]).
+        """
+        # Validate inputs
+        if from_scratch:
+            assert x_mel_gt is not None, "from_scratch requires x_mel_gt"
+
+        # repeat batch n_samples times and call the appropriate sampler inside no_grad
+        with torch.no_grad():
+            if from_scratch:
+                # x_mel_gt: [B, S, L]
+                x_mel = x_mel_gt.repeat(n_samples, 1, 1)
+                outputs = self.global_sampling_from_scratch(
+                    x_mel, temperature=temperature, max_seq_len=generation_length
+                )
+            else:
+                assert x is not None, "generate requires x when from_scratch=False"
+                x_rep = x.repeat(n_samples, 1, 1)
+                x_mel_gt_rep = None
+                if x_mel_gt is not None:
+                    x_mel_gt_rep = x_mel_gt.repeat(n_samples, 1, 1)
+                outputs = self.global_sampling(
+                    x_rep,
+                    x_mel_gt=x_mel_gt_rep if gt_mel else None,
+                    temperature=temperature,
+                    max_seq_len=generation_length,
+                )
+
+        return outputs
+
+    def tokens_to_prettymidi(self, outputs, tempo: float = 90.0, single: bool = False):
+        """Convert model token outputs to a list of pretty_midi.PrettyMIDI objects.
+
+        - outputs: list of timesteps, each a Tensor of shape [B, L] (batch first).
+        - returns: list of PrettyMIDI objects, one per batch element.
+        """
+        # lazy imports so normal training doesn't require pretty_midi
+        try:
+            import pretty_midi
+        except Exception:  # pretty_midi may be unavailable in some envs
+            pretty_midi = None
+        try:
+            from StreamMUSE2.preprocess.preprocess_midi2pt_dataset import DURATION_TEMPLATES
+        except Exception:
+            # fallback: minimal durations (quarter-note)
+            DURATION_TEMPLATES = [1.0]
+
+        # outputs: list of T steps, each [B, L]
+        T = len(outputs)
+        if T == 0:
+            return []
+
+        # stack along time to shape [B, T, L]
+        seqs = [o for o in outputs]
+        if isinstance(seqs[0], torch.Tensor):
+            # each seq tensor: [B, L] -> stack -> [B, T, L]
+            stacked = torch.stack(seqs, dim=1)
+        else:
+            # fallback to tensor conversion
+            stacked = torch.tensor(seqs)
+
+        # stacked: [B, T, L]
+        midis = []
+        time_step_length = 60.0 / tempo / 4
+        if pretty_midi is None:
+            raise RuntimeError("pretty_midi is required to convert tokens to MIDI; install pretty_midi")
+
+        for b in range(stacked.shape[0]):
+            midi = pretty_midi.PrettyMIDI(initial_tempo=tempo)
+            instrument_map = {}
+            for t in range(stacked.shape[1]):
+                content = stacked[b, t]
+                time_step = t if single else t // 2
+                start_time = time_step * time_step_length
+                for i in range(0, content.shape[-1], 2):
+                    program = int(content[i].item())
+                    if program == EOS_TOKEN:
+                        break
+                    if i + 1 >= content.shape[-1]:
+                        break
+                    pitch_duration = int(content[i + 1].item()) - 2
+                    pitch = pitch_duration % 128
+                    duration = pitch_duration // 128
+                    if program not in (0, 1):
+                        # skip invalid program
+                        continue
+                    if pitch < 0 or pitch >= 128:
+                        continue
+                    if duration < 0 or duration >= len(DURATION_TEMPLATES):
+                        continue
+                    end_time = DURATION_TEMPLATES[duration] * time_step_length + start_time
+                    if program not in instrument_map:
+                        if program == 0:
+                            inst = pretty_midi.Instrument(program=24, name="Guitar")
+                        else:
+                            inst = pretty_midi.Instrument(program=0, name="Piano")
+                        instrument_map[program] = inst
+                        midi.instruments.append(inst)
+                    inst = instrument_map[program]
+                    inst.notes.append(pretty_midi.Note(velocity=100, pitch=pitch, start=start_time, end=end_time))
+            midis.append(midi)
+        return midis
+
+    def save_tokens_as_midi(self, outputs, save_path, tempo: float = 90.0, single: bool = False):
+        """Save model token outputs to disk as a MIDI file or multiple files.
+
+        - outputs: list of timesteps (each [B, L]). If batch size >1, this will save
+          one file per batch element by appending an index to `save_path`.
+        - save_path: if batch==1, exact file path; if batch>1, treated as a directory or
+          a template (e.g. 'out/sample' -> 'out/sample_0.mid').
+        """
+        import os
+
+        midis = self.tokens_to_prettymidi(outputs, tempo=tempo, single=single)
+        if len(midis) == 0:
+            return []
+        saved = []
+        os.makedirs(os.path.dirname(save_path) or ".", exist_ok=True)
+        if len(midis) == 1:
+            path = save_path if save_path.endswith(".mid") else save_path + ".mid"
+            midis[0].write(path)
+            saved.append(path)
+        else:
+            base, ext = (save_path, ".mid") if save_path.endswith(".mid") else (save_path, ".mid")
+            for i, midi in enumerate(midis):
+                path = f"{base}_{i}{ext}"
+                midi.write(path)
+                saved.append(path)
+        return saved
 
     # def configure_optimizers(self):
     #     max_lr = 1e-4
