@@ -123,7 +123,6 @@ class OldPtDataset(BaseDataset):
         mel_data = torch.stack([item.mel_data for item in batch])
         acc_data = torch.stack([item.acc_data for item in batch])
         pitch_shift = torch.stack([item.pitch_shift for item in batch])
-
         return OldPtModelInput(
             mel_data=mel_data, acc_data=acc_data, pitch_shift=pitch_shift
         )

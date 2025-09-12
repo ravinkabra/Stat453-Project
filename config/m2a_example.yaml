@@ -3,6 +3,7 @@ description: ''
 save_dir: ./output/m2a_example
 experiment_name: m2a_experiment
 version: 0.0.
+save_experiment_version_dir: ./output/m2a_example/training_project/0.0.
 model:
   _target_: src.model.old_pt_m2a_transformer.model.OldPtM2ATransformer
   optimizer:
@@ -45,8 +46,10 @@ model:
           sync_dist: true
           reduce_fx: mean
   global_network:
-    _target_: src.network.customized_roformer.network.CustomizedRoFormerEncoder
+    _target_: src.network.roformer.network.RoFormerEncoder
     config:
+      _object_type_: RoFormerConfig
+      _module_: transformers.models.roformer.configuration_roformer
       return_dict: true
       output_hidden_states: false
       torchscript: false
@@ -105,8 +108,10 @@ model:
       model_type: roformer
       output_attentions: false
   local_encoder_network:
-    _target_: src.network.customized_roformer.network.CustomizedRoFormerEncoder
+    _target_: src.network.roformer.network.RoFormerEncoder
     config:
+      _object_type_: RoFormerConfig
+      _module_: transformers.models.roformer.configuration_roformer
       return_dict: true
       output_hidden_states: false
       torchscript: false
@@ -165,8 +170,10 @@ model:
       model_type: roformer
       output_attentions: false
   local_decoder_network:
-    _target_: src.network.customized_roformer.network.CustomizedRoFormerEncoder
+    _target_: src.network.roformer.network.RoFormerEncoder
     config:
+      _object_type_: RoFormerConfig
+      _module_: transformers.models.roformer.configuration_roformer
       return_dict: true
       output_hidden_states: false
       torchscript: false
@@ -282,11 +289,17 @@ trainer:
 loggers:
   csv:
     _target_: pytorch_lightning.loggers.CSVLogger
+    version: 0.0.0
     prefix: ''
+    save_dir: ./output/m2a_example
+    name: m2a_experiment
     flush_logs_every_n_steps: 1000
   tensorboard:
     _target_: pytorch_lightning.loggers.TensorBoardLogger
+    version: 0.0.0
     prefix: ''
+    save_dir: ./output/m2a_example
+    name: m2a_experiment
     default_hp_metric: true
     log_graph: false
     filename_suffix: ''

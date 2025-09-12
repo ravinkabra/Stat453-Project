@@ -3,13 +3,17 @@
 
 # project_manager = ProjectManager(project)
 # project_manager.run()
-# # import multidict
+# import multidict
 
-from src._project.base.project import ProjectConfig, ProjectManager
-import yaml
+from src._project.base.project import ProjectManager
+from src._project.base.config import ProjectConfig
 
-project = yaml.load(open("./config/m2a_example.yaml", "r"), Loader=yaml.SafeLoader)
-print(project)
-project = ProjectConfig(**project)
-project_manager = ProjectManager(project)
-# project_manager.run()
+# 使用新的 from_yaml 方法加载配置
+project = ProjectConfig.from_yaml("config/m2a_example.yaml")
+print("Loaded project config:")
+print(f"  - Name: {project.name}")
+print(f"  - Experiment: {project.experiment_name}")
+print(f"  - Model: {project.model._target_}")
+print(f"  - Mode: {project.mode}")
+
+ProjectManager(project).run()

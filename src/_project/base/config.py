@@ -168,7 +168,6 @@ class ProjectConfig:
 
                 # 添加类型信息以便可能的重建
                 return {"_object_type_": obj.__class__.__name__, "_module_": obj.__class__.__module__, **config_dict}
-                # return config_dict
             except Exception:
                 pass
 
@@ -262,6 +261,95 @@ class ProjectConfig:
                 with open(path, "w", encoding="utf-8") as f:
                     f.write(yaml_str)
             return yaml_str
+
+    @classmethod
+    def from_yaml(cls, path: str) -> "ProjectConfig":
+        """从 YAML 文件加载 ProjectConfig
+
+        Args:
+            path: YAML 文件路径
+
+        Returns:
+            ProjectConfig 实例
+
+        Raises:
+            FileNotFoundError: 如果文件不存在
+            yaml.YAMLError: 如果 YAML 解析失败
+            ValueError: 如果数据格式不正确
+        """
+        if yaml is None:
+            raise ImportError("PyYAML is required for loading from YAML files")
+
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Configuration file not found: {path}")
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+
+        if not isinstance(data, dict):
+            raise ValueError("YAML file must contain a dictionary at the root level")
+
+        # 反序列化复杂对象
+        processed_data = cls._deserialize_complex_objects(data)
+
+        # 创建 ProjectConfig 实例
+        return cls(**processed_data)
+
+    @classmethod
+    def _deserialize_complex_objects(cls, obj: Any) -> Any:
+        """反序列化复杂对象，重建之前序列化的对象"""
+        if isinstance(obj, dict):
+            # 检查是否是序列化的复杂对象
+            if "_object_type_" in obj and "_module_" in obj:
+                return cls._rebuild_object(obj)
+            else:
+                # 递归处理字典中的值
+                return {k: cls._deserialize_complex_objects(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [cls._deserialize_complex_objects(item) for item in obj]
+        else:
+            return obj
+
+    @classmethod
+    def _rebuild_object(cls, obj_data: Dict[str, Any]) -> Any:
+        """重建序列化的对象"""
+        object_type = obj_data.get("_object_type_")
+        module_name = obj_data.get("_module_")
+
+        # 移除元数据
+        data = {k: v for k, v in obj_data.items() if not k.startswith("_object_type_") and not k.startswith("_module_")}
+
+        # 特殊处理已知的对象类型
+        if object_type == "RoFormerConfig" and module_name:
+            try:
+                # 动态导入模块
+                import importlib
+
+                module = importlib.import_module(module_name)
+                config_class = getattr(module, object_type)
+
+                # 使用 from_dict 或直接传参数重建对象
+                if hasattr(config_class, "from_dict"):
+                    return config_class.from_dict(data)
+                else:
+                    # 过滤掉可能导致问题的参数
+                    filtered_data = {}
+                    for k, v in data.items():
+                        try:
+                            # 尝试设置参数，如果失败就跳过
+                            temp_config = config_class()
+                            if hasattr(temp_config, k):
+                                filtered_data[k] = v
+                        except Exception:
+                            continue
+                    return config_class(**filtered_data)
+            except Exception as e:
+                print(f"Warning: Could not rebuild {object_type}: {e}")
+                # 如果重建失败，返回原始数据
+                return data
+
+        # 对于其他类型，尝试通用重建或返回数据
+        return data
 
     def _setup_logger_save_dirs(self):
         for name, logger_config in self.loggers.items():
