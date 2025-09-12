@@ -168,6 +168,7 @@ class ProjectConfig:
 
                 # 添加类型信息以便可能的重建
                 return {"_object_type_": obj.__class__.__name__, "_module_": obj.__class__.__module__, **config_dict}
+                # return config_dict
             except Exception:
                 pass
 

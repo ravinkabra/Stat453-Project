@@ -6,9 +6,10 @@
 # # import multidict
 
 from src._project.base.project import ProjectConfig, ProjectManager
-import yaml 
-project = yaml.load(open("./config/m2a_example.yaml","r"),Loader=yaml.FullLoader)
+import yaml
+
+project = yaml.load(open("./config/m2a_example.yaml", "r"), Loader=yaml.SafeLoader)
 print(project)
 project = ProjectConfig(**project)
 project_manager = ProjectManager(project)
-project_manager.run()
+# project_manager.run()
