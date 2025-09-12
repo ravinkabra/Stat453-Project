@@ -8,8 +8,8 @@ from ...network.customized_roformer.config import CustomizedRoFormerEncoderParam
 
 @dataclass
 class OldPtM2ATransformerConfig(BaseModelConfig):
-    _target_: Literal["src.model.old_m2a_transformer.model.OldM2ATransformer"] = Field(
-        default="src.model.old_m2a_transformer.model.OldM2ATransformer"
+    _target_: Literal["src.model.old_pt_m2a_transformer.model.OldPtM2ATransformer"] = Field(
+        default="src.model.old_pt_m2a_transformer.model.OldPtM2ATransformer"
     )
 
 

@@ -33,28 +33,30 @@ from src._callback.sample_saver.config import (
 )
 
 train_dataset = OldPtDatasetConfig(
-    file_path="data/pop909/pop909_acc_cp4.pt",
-    split_ratio=0.7,
-    batch_size=128,
+    file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
+    split_ratio=9,
+    batch_size=16,
     num_workers=0,
     persistent_workers=False,
+    target_length=192,
     shuffle=True,
 )
 
 val_dataset = OldPtDatasetConfig(
-    file_path="data/pop909/pop909_acc_cp4.pt",
-    split_ratio=0.15,
-    batch_size=2,
+    file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
+    split_ratio=9,
+    batch_size=32,
     num_workers=0,
     shuffle=False,
+    target_length=192,
     persistent_workers=False,
 )
 datamodule = BaseDataModuleConfig(train=train_dataset, val=val_dataset)
 
-optimizer = AdamParams(_target_="torch.optim.Adam", lr=1e-3, weight_decay=1e-5)
+optimizer = AdamParams(_target_="torch.optim.Adam", lr=1e-4, weight_decay=1e-5)
 lr_scheduler = CosineAnnealingLRParams(
     _target_="torch.optim.lr_scheduler.CosineAnnealingLR",
-    frequency=10,
+    frequency=100,
 )
 metric_manager = MetricManagerConfig(
     metrics={
@@ -63,6 +65,7 @@ metric_manager = MetricManagerConfig(
                 phase=["train", "val"],
                 prog_bar=True,
                 update_frequency=5,
+                on_step=False,
                 # on_step=True,
             ),
             metrics={
@@ -113,12 +116,12 @@ model = OldPtM2ATransformerConfig(
     metric_manager=metric_manager,
 )
 loggers = {
-    "csv": CSVLoggerParams(save_dir="./output/mnist_example/logs", flush_logs_every_n_steps=1000, version=0),
-    "tensorboard": TensorBoardLoggerParams(save_dir="./output/mnist_example/logs", version=0),
+    "csv": CSVLoggerParams( flush_logs_every_n_steps=1000),
+    "tensorboard": TensorBoardLoggerParams(),
 }
 trainer = BaseTrainerConfig(
-    max_epochs=3,
-    log_every_n_steps=500,
+    # max_epochs=3,
+    log_every_n_steps=10,
 )
 callbacks = {
     # "sample_saver": SampleSaverCallbackConfig(
@@ -153,7 +156,7 @@ callbacks = {
 }
 project = ProjectConfig(
     project_name="M2A-Example",
-    output_dir="./output/m2a_example",
+    save_dir="./output/m2a_example",
     log_level="INFO",
     experiment_name="m2a_experiment",
     datamodule=datamodule,
@@ -162,6 +165,7 @@ project = ProjectConfig(
     loggers=loggers,
     # callbacks=callbacks,
     trainer=trainer,
+    version="0.0.",
 )
 
-project.to_yaml("./config/m2a_example.yaml")
+project.to_yaml("./config/m2a_example.yaml",use_original_config=True)

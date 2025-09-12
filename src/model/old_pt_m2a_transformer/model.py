@@ -1,4 +1,5 @@
 from typing import Optional
+import logging
 
 import torch
 import torch.nn as nn
@@ -7,6 +8,11 @@ import torch.nn.functional as F
 from ..base.model import BaseModel
 from .config import OldPtM2ATransformerConfig
 from ...dataset.old_pt.model_input import OldPtModelInput
+
+# 设置调试日志
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
+DEBUG = False
 
 # Constants
 TRAIN_LENGTH = 192
@@ -19,6 +25,8 @@ N_TOKENS = N_NORMAL_TOKENS + 3
 SOS_TOKEN = N_NORMAL_TOKENS
 EOS_TOKEN = N_NORMAL_TOKENS + 1
 PAD_TOKEN = N_NORMAL_TOKENS + 2
+
+
 
 
 def fill_with_neg_inf(t: torch.Tensor) -> torch.Tensor:
@@ -53,14 +61,12 @@ class OldPtM2ATransformer(BaseModel):
         self.hidden_size = global_params.config.hidden_size
         # HF config uses `num_hidden_layers` for layer count
         # Lazy import of transformers RoFormer to avoid heavy import at module load
-        from transformers.models.roformer.modeling_roformer import (
-            RoFormerEncoder,
-        )
+        from ...network.customized_roformer.network import CustomizedRoFormerEncoder
 
         # Use the provided RoFormerConfig instances from the config params. These
         # were supplied via `CustomizedRoFormerEncoderParams.config`.
         main_roformer_config = global_params.config
-        self.model = RoFormerEncoder(main_roformer_config)
+        self.model = CustomizedRoFormerEncoder(main_roformer_config)
         local_encoder_config = local_enc_params.config
         local_decoder_config = local_dec_params.config
 
@@ -69,53 +75,151 @@ class OldPtM2ATransformer(BaseModel):
         with torch.no_grad():
             self.token_type_embeddings.weight.mul_(2.0)
 
-        self.local_encoder = RoFormerEncoder(local_encoder_config)
-        self.local_decoder = RoFormerEncoder(local_decoder_config)
+        self.local_encoder = CustomizedRoFormerEncoder(local_encoder_config)
+        self.local_decoder = CustomizedRoFormerEncoder(local_decoder_config)
         self.final_decoder = nn.Linear(self.hidden_size, N_TOKENS)
         self.global_sos = nn.Parameter(torch.randn(self.hidden_size))
         self._future_mask = torch.empty(0)
 
     # --- Small helpers to improve readability ---
     def _prepare_local_inputs(self, x: torch.LongTensor, token_type_ids: torch.LongTensor):
-        """Flatten batch/seq to (batch*seq, subseq), prepend SOS, build mask and embeddings.
+        """为局部编码器准备输入：展平、添加SOS、构建mask和embeddings。
 
-        Returns (mask, emb, batch_size, seq_len)
+        处理流程：
+        1. 将 [batch, seq, subseq] 展平为 [batch*seq, subseq]
+        2. 在每个子序列前添加 SOS_TOKEN
+        3. 构建 attention mask（非PAD位置为True）
+        4. 计算 word embedding 和 type embedding 并相加
+
+        Args:
+            x: 输入张量，形状 [batch, seq, subseq]
+            token_type_ids: token类型ID，形状 [batch, seq, subseq+1]
+                          注意：比x多一维，因为包含了SOS位置的type
+
+        Returns:
+            tuple: (mask, emb, batch_size, seq_len)
+            - mask: attention mask，形状 [batch*seq, subseq+1]
+            - emb: 组合embedding，形状 [batch*seq, subseq+1, hidden_size]
+            - batch_size: 原始batch大小
+            - seq_len: 原始序列长度
+
+        潜在问题排查：
+            如果出现维度不匹配错误，检查：
+            1. token_type_ids 的形状是否为 [batch, seq, subseq+1]
+            2. word_emb 和 type_emb 的序列长度维度是否一致
         """
         batch_size, seq_len, subseq_len = x.shape
+        DEBUG and logger.debug(f"x.shape = {x.shape}")
+        DEBUG and logger.debug(f"token_type_ids.shape = {token_type_ids.shape}")
+
+        # 1. 展平 batch 和 seq 维度：[batch, seq, subseq] -> [batch*seq, subseq]
         x_flat = x.view(-1, subseq_len)
+        DEBUG and logger.debug(f"x_flat.shape = {x_flat.shape}")
+
+        # 2. 在每个子序列前添加 SOS_TOKEN：[batch*seq, subseq] -> [batch*seq, subseq+1]
         x_flat = torch.cat(
             [torch.full((x_flat.shape[0], 1), SOS_TOKEN, dtype=torch.long, device=x_flat.device), x_flat],
             dim=-1,
         )
+        DEBUG and logger.debug(f"x_flat after SOS.shape = {x_flat.shape}")
+
+        # 3. 构建 attention mask：非PAD位置为True
         mask = x_flat != PAD_TOKEN
+        DEBUG and logger.debug(f"mask.shape = {mask.shape}")
+
+        # 4. 计算 word embedding
         word_emb = self.local_embedding(x_flat)
-        type_emb = token_type_ids.view(batch_size * seq_len, word_emb.shape[1], -1)
-        type_emb = self.token_type_embeddings(type_emb)
+        DEBUG and logger.debug(f"word_emb.shape = {word_emb.shape}")
+
+        # 5. 重塑 token_type_ids 并计算 type embedding
+        # 关键：token_type_ids 应该已经包含 SOS 位置的维度
+        # token_type_ids 原形状: [batch, seq, subseq+1]
+        # 需要重塑为: [batch*seq, subseq+1]，最后一维应该是1（表示每个位置的type）
+        type_emb_input = token_type_ids.view(batch_size * seq_len, -1)
+        DEBUG and logger.debug(f"type_emb_input.shape = {type_emb_input.shape}")
+
+        type_emb = self.token_type_embeddings(type_emb_input)
+        DEBUG and logger.debug(f"type_emb.shape = {type_emb.shape}")
+
+        # 6. 组合两种 embedding
+        # 这里如果出现维度不匹配，说明 word_emb 和 type_emb 的序列长度不一致
         emb = word_emb + type_emb
+        DEBUG and logger.debug(f"final emb.shape = {emb.shape}")
+
         return mask, emb, batch_size, seq_len
 
     def _process_triplet_tensor(self, t: torch.LongTensor, pitch_shift: torch.LongTensor, type_value: int):
-        """Convert [batch,seq,subseq] triplet representation into model token ids.
+        """将三元组表示的音乐数据转换为模型可用的 token 格式。
 
-        `type_value` is 0 (input) or 1 (target). Returns shape [batch, seq, subseq//3*2].
+        数据转换流程：
+        输入: [batch, seq, subseq] 其中每3个连续元素为一个三元组 (program, pitch, duration)
+        输出: [batch, seq, subseq//3*2] 其中每个三元组转换为2个 token (type, combined_value)
+
+        Args:
+            t: 原始音乐数据张量，形状 [batch, seq, subseq]
+               - 每3个连续元素组成一个音乐事件：[program, pitch, duration]
+               - program: 乐器类型 (0-127, 254表示EOS, 127表示鼓)
+               - pitch: 音高 (0-127, 255表示PAD)
+               - duration: 时长 (0-24, 表示不同的时值)
+            pitch_shift: 音高偏移量，形状 [batch]，用于数据增强
+            type_value: token 类型标识符
+                       - 0: 输入数据（如旋律）
+                       - 1: 目标数据（如伴奏）
+
+        Returns:
+            处理后的张量，形状 [batch, seq, subseq//3*2]
+            每个原始三元组 (program, pitch, duration) 转换为两个 token:
+            - token1: type_value (用于区分数据类型)
+            - token2: combined_value (编码了 pitch + duration*128 + offset + pitch_shift)
+
+        特殊值处理：
+            - PAD_TOKEN: 用于填充序列到固定长度
+            - EOS_TOKEN: 标记序列结束
+            - 鼓声不应用 pitch_shift（因为鼓的音高概念不同）
         """
         batch_size, seq_length, subseq_length = t.shape
+
+        # 将输入重塑为三元组格式：[batch, seq, num_events, 3]
+        # 其中 num_events = subseq_length // 3，每个 event 包含 [program, pitch, duration]
         t = t.long().view(batch_size, seq_length, subseq_length // 3, 3)
+
+        # 创建输出张量：每个三元组将转换为2个 token
         out = torch.zeros(
             batch_size,
             seq_length,
-            subseq_length // 3,
-            2,
+            subseq_length // 3,  # 事件数量
+            2,  # 每个事件2个 token
             dtype=torch.long,
             device=t.device,
         )
-        pad_indices = t[:, :, :, 1] == 255
-        eos_indices = t[:, :, :, 0] == 254
-        is_not_drum = t[:, :, :, 0] != 127
+
+        # 识别特殊标记位置
+        pad_indices = t[:, :, :, 1] == 255  # pitch=255 表示 PAD
+        eos_indices = t[:, :, :, 0] == 254  # program=254 表示 EOS（序列结束）
+        is_not_drum = t[:, :, :, 0] != 127  # program=127 表示鼓，鼓不应用音高偏移
+
+        # 设置第一个 token：数据类型标识符
+        # type_value=0 表示输入数据（旋律），type_value=1 表示目标数据（伴奏）
         out[:, :, :, 0] = type_value
-        out[:, :, :, 1] = t[:, :, :, 1] + (t[:, :, :, 2]) * 128 + 2 + pitch_shift[:, None, None] * is_not_drum
-        out[pad_indices] = PAD_TOKEN
-        out[:, :, :, 0][eos_indices] = EOS_TOKEN
+
+        # 设置第二个 token：组合编码值
+        # 公式: pitch + duration*128 + 2 + pitch_shift*is_not_drum
+        # - pitch: 原始音高 (0-127)
+        # - duration*128: 时长左移7位，为 pitch 留出空间
+        # - +2: 基础偏移，避免与特殊 token 冲突
+        # - pitch_shift: 只对非鼓声应用音高偏移（数据增强）
+        out[:, :, :, 1] = (
+            t[:, :, :, 1]  # pitch
+            + (t[:, :, :, 2]) * 128  # duration * 128
+            + 2  # base offset
+            + pitch_shift[:, None, None] * is_not_drum  # conditional pitch shift
+        )
+
+        # 处理特殊位置
+        out[pad_indices] = PAD_TOKEN  # PAD 位置设为 PAD_TOKEN
+        out[:, :, :, 0][eos_indices] = EOS_TOKEN  # EOS 位置的第一个 token 设为 EOS_TOKEN
+
+        # 重塑为最终输出格式：[batch, seq, subseq//3*2]
         return out.view(batch_size, seq_length, subseq_length // 3 * 2)
 
     def local_encode(self, x: torch.LongTensor, token_type_ids: torch.LongTensor):
@@ -252,80 +356,101 @@ class OldPtM2ATransformer(BaseModel):
         - 当 y 提供时，返回 (x_processed, y_processed) 用于 teacher forcing；否则仅返回 x_processed 用于推理。
         返回的每个 token 的最后一维长度为 subseq_length // 3 * 2（两个 token 的组合）。
         """
-        batch_size, seq_length, subseq_length = x.shape
-        x = x.long().view(batch_size, seq_length, subseq_length // 3, 3)
-        x_processed = torch.zeros(
-            batch_size,
-            seq_length,
-            subseq_length // 3,
-            2,
-            dtype=torch.long,
-            device=x.device,
-        )
-        pad_indices = x[:, :, :, 1] == 255
-        eos_indices = x[:, :, :, 0] == 254
-        is_not_drum = x[:, :, :, 0] != 127
-        # 首个 token 的 type 字段（0 表示输入）
-        x_processed[:, :, :, 0] = 0
-        # 第二个 token 字段合成 pitch + duration*128 + offset + pitch_shift（如果不是 drum）
-        x_processed[:, :, :, 1] = x[:, :, :, 1] + (x[:, :, :, 2]) * 128 + 2 + pitch_shift[:, None, None] * is_not_drum
-        x_processed[pad_indices] = PAD_TOKEN
-        x_processed[:, :, :, 0][eos_indices] = EOS_TOKEN
+        # 处理旋律数据 x (type_value=0 表示输入)
+        x_processed = self._process_triplet_tensor(x, pitch_shift, type_value=0)
 
         if y is None:
-            return x_processed.view(batch_size, seq_length, subseq_length // 3 * 2)
+            return x_processed
         else:
-            # 如果有目标 y，则对 y 做相同的处理，type 字段设置为 1（表示目标）
-            x_processed = self._process_triplet_tensor(x, pitch_shift, type_value=0)
-            if y is None:
-                return x_processed
+            # 处理伴奏数据 y (type_value=1 表示目标)
             y_processed = self._process_triplet_tensor(y, pitch_shift, type_value=1)
             return x_processed, y_processed
-
     def training_step(self, batch: OldPtModelInput, batch_idx: int):
         # Expect batch to have attributes mel_data, acc_data, pitch_shift
         mel = batch.mel_data
         acc = batch.acc_data
         pitch_shift = batch.pitch_shift
         loss = self.loss(mel, acc, pitch_shift)
-        self.log(
-            "train_loss",
-            loss,
-            on_step=True,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            sync_dist=True,
+        safe_lr = None
+        try:
+            sched = self.lr_schedulers()
+            safe_lr = sched.get_last_lr()[0] if sched else None
+        except Exception:
+            safe_lr = None
+        self.metric_manager.update(
+            self,
+            batch_idx,
+            group_name="training_state",
+            loss=loss,
+            learning_rate=safe_lr,
         )
-        scheduler = self.lr_schedulers()
-        if scheduler:
-            scheduler.step()
-            self.log(
-                "training/lr",
-                scheduler.get_last_lr()[0],
-                on_step=True,
-                on_epoch=True,
-                prog_bar=True,
-                logger=True,
-                sync_dist=True,
-            )
+        self.metric_manager.log(self, phase="train", batch_idx=batch_idx)
         return loss
+    
+    def save(self, data, filename_base, extension, save_dir, **kwargs):
+        return super().save(data, filename_base, extension, save_dir, **kwargs)
 
     def validation_step(self, batch: OldPtModelInput, batch_idx: int):
         mel = batch.mel_data
         acc = batch.acc_data
         pitch_shift = batch.pitch_shift
         loss = self.loss(mel, acc, pitch_shift)
-        self.log(
-            "val_loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            logger=True,
-            sync_dist=True,
+        self.metric_manager.update(
+            self,
+            batch_idx,
+            group_name="training_state",
+            loss=loss,
+        )
+        self.metric_manager.log(
+            self,
+            phase="val",
+            batch_idx=batch_idx,
         )
         return loss
+    # def training_step(self, batch: OldPtModelInput, batch_idx: int):
+    #     # Expect batch to have attributes mel_data, acc_data, pitch_shift
+    #     mel = batch.mel_data
+    #     acc = batch.acc_data
+    #     pitch_shift = batch.pitch_shift
+    #     loss = self.loss(mel, acc, pitch_shift)
+    #     self.log(
+    #         "train_loss",
+    #         loss,
+    #         on_step=True,
+    #         on_epoch=True,
+    #         prog_bar=True,
+    #         logger=True,
+    #         sync_dist=True,
+    #     )
+    #     scheduler = self.lr_schedulers()
+    #     if scheduler:
+    #         scheduler.step()
+    #         self.log(
+    #             "training/lr",
+    #             scheduler.get_last_lr()[0],
+    #             on_step=True,
+    #             on_epoch=True,
+    #             prog_bar=True,
+    #             logger=True,
+    #             sync_dist=True,
+    #         )
+    #     return loss
+
+    # def validation_step(self, batch: OldPtModelInput, batch_idx: int):
+    #     mel = batch.mel_data
+    #     acc = batch.acc_data
+    #     pitch_shift = batch.pitch_shift
+    #     loss = self.loss(mel, acc, pitch_shift)
+    #     self.log(
+    #         "val_loss",
+    #         loss,
+    #         on_step=False,
+    #         on_epoch=True,
+    #         prog_bar=True,
+    #         logger=True,
+    #         sync_dist=True,
+    #     )
+    #     return loss
 
     def global_sampling(self, x, x_mel_gt=None, max_seq_len=384, temperature=1.0):
         batch_size, seq_len, subseq_len = x.shape
@@ -434,3 +559,48 @@ class OldPtM2ATransformer(BaseModel):
         与原始 batch 同类型的对象（通过 type(batch) 重建）。这对多设备训练/推理很有用。
         """
         return type(batch)(**{k: (v.to(self.device) if hasattr(v, "to") else v) for k, v in batch.__dict__.items()})
+
+    def save(self, data, filename_base, extension, save_dir, **kwargs):
+        return super().save(data, filename_base, extension, save_dir, **kwargs)
+
+    def loss(self, x_mel, x_acc, pitch_shift):
+        """计算模型的交叉熵损失。
+
+        该方法实现了分层模型的损失计算：
+        1. 对输入的旋律和伴奏数据进行预处理
+        2. 将伴奏和旋律交替排列构成训练序列
+        3. 构建目标序列，其中旋律位置被掩码（设为 PAD_TOKEN）
+        4. 通过前向传播得到 logits 并计算交叉熵损失
+
+        Args:
+            x_mel: 旋律数据，形状 [batch, seq, subseq]
+            x_acc: 伴奏数据，形状 [batch, seq, subseq]
+            pitch_shift: 音高偏移量，形状 [batch]
+
+        Returns:
+            交叉熵损失值
+        """
+        # 预处理旋律和伴奏数据
+        x_mel_proc, x_acc_proc = self.preprocess(x_mel, pitch_shift, y=x_acc)
+        batch_size, seq_len, subseq_len = x_mel_proc.shape
+
+        # 将伴奏和旋律交替排列：[acc0, mel0, acc1, mel1, ...]
+        stacked = torch.stack([x_acc_proc, x_mel_proc], dim=2)
+        x = stacked.view(batch_size, seq_len * 2, subseq_len)
+
+        # 构建目标序列（与输入相同）
+        x_target = x.clone()
+
+        # 构建掩码：在奇数位置（旋律位置）设置为 True
+        idx = torch.arange(seq_len * 2, device=x.device)
+        mel_mask = (idx % 2 == 1).unsqueeze(0).unsqueeze(-1)  # [1, 2*S, 1]
+        mel_mask = mel_mask.expand(batch_size, seq_len * 2, subseq_len)  # [B, 2*S, L]
+
+        # 将旋律位置的目标设为 PAD_TOKEN（模型只需要预测伴奏）
+        x_target[mel_mask] = PAD_TOKEN
+
+        # 前向传播得到 logits
+        logits = self(x)
+
+        # 计算交叉熵损失
+        return F.cross_entropy(logits.view(-1, N_TOKENS), x_target.view(-1), ignore_index=PAD_TOKEN)

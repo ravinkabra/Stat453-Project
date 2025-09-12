@@ -13,8 +13,8 @@ class CustomizedRoFormerEncoderParams:
     the prefilled config into it.
     """
 
-    _target_: Literal["src.network.roformer.network.RoFormerEncoder"] = Field(
-        default="src.network.roformer.network.RoFormerEncoder"
+    _target_: Literal["src.network.customized_roformer.network.CustomizedRoFormerEncoder"] = Field(
+        default="src.network.customized_roformer.network.CustomizedRoFormerEncoder"
     )
     # The HF config carries detailed hyper-parameters. Provide explicit
     # preset defaults here so users can create params without further steps.

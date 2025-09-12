@@ -1,0 +1,309 @@
+name: training_project
+description: ''
+save_dir: ./output/m2a_example
+experiment_name: m2a_experiment
+version: 0.0.
+save_experiment_version_dir: ./output/m2a_example/training_project/0.0.
+model:
+  _target_: src.model.old_pt_m2a_transformer.model.OldPtM2ATransformer
+  optimizer:
+    _target_: torch.optim.Adam
+    lr: 0.0001
+    betas:
+    - 0.9
+    - 0.999
+    eps: 1.0e-08
+    weight_decay: 1.0e-05
+    amsgrad: false
+  lr_scheduler:
+    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+    interval: step
+    frequency: 100
+    strict: true
+    T_max: 100
+    eta_min: 0.0
+  metric_manager:
+    _target_: src.metric._manager.manager.MetricManager
+    metrics:
+      training_state:
+        metrics:
+          loss:
+            _target_: src.metric.value_recoder.metric.ValueRecorderMetric
+            aggregation: mean
+          learning_rate:
+            _target_: src.metric.value_recoder.metric.ValueRecorderMetric
+            aggregation: mean
+        log_config:
+          phase:
+          - train
+          - val
+          update_frequency: 5
+          compute_frequency: 5
+          prog_bar: true
+          logger: true
+          on_step: false
+          on_epoch: true
+          sync_dist: true
+          reduce_fx: mean
+  global_network:
+    _target_: src.network.customized_roformer.network.CustomizedRoFormerEncoder
+    config:
+      _object_type_: RoFormerConfig
+      _module_: transformers.models.roformer.configuration_roformer
+      return_dict: true
+      output_hidden_states: false
+      torchscript: false
+      pruned_heads: {}
+      tie_word_embeddings: true
+      chunk_size_feed_forward: 0
+      is_encoder_decoder: false
+      is_decoder: false
+      add_cross_attention: false
+      tie_encoder_decoder: false
+      id2label:
+        0: LABEL_0
+        1: LABEL_1
+      label2id:
+        LABEL_0: 0
+        LABEL_1: 1
+      pad_token_id: 0
+      max_length: 20
+      min_length: 0
+      do_sample: false
+      early_stopping: false
+      num_beams: 1
+      num_beam_groups: 1
+      diversity_penalty: 0.0
+      temperature: 1.0
+      top_k: 50
+      top_p: 1.0
+      typical_p: 1.0
+      repetition_penalty: 1.0
+      length_penalty: 1.0
+      no_repeat_ngram_size: 0
+      encoder_no_repeat_ngram_size: 0
+      num_return_sequences: 1
+      output_scores: false
+      return_dict_in_generate: false
+      remove_invalid_values: false
+      _name_or_path: ''
+      transformers_version: 4.56.1
+      tf_legacy_loss: false
+      use_bfloat16: false
+      vocab_size: 3000
+      embedding_size: 768
+      hidden_size: 768
+      num_hidden_layers: 12
+      num_attention_heads: 12
+      hidden_act: gelu
+      intermediate_size: 3072
+      hidden_dropout_prob: 0.1
+      attention_probs_dropout_prob: 0.1
+      max_position_embeddings: 1536
+      type_vocab_size: 2
+      initializer_range: 0.02
+      layer_norm_eps: 1.0e-12
+      rotary_value: false
+      use_cache: true
+      model_type: roformer
+      output_attentions: false
+  local_encoder_network:
+    _target_: src.network.customized_roformer.network.CustomizedRoFormerEncoder
+    config:
+      _object_type_: RoFormerConfig
+      _module_: transformers.models.roformer.configuration_roformer
+      return_dict: true
+      output_hidden_states: false
+      torchscript: false
+      pruned_heads: {}
+      tie_word_embeddings: true
+      chunk_size_feed_forward: 0
+      is_encoder_decoder: false
+      is_decoder: false
+      add_cross_attention: false
+      tie_encoder_decoder: false
+      id2label:
+        0: LABEL_0
+        1: LABEL_1
+      label2id:
+        LABEL_0: 0
+        LABEL_1: 1
+      pad_token_id: 0
+      max_length: 20
+      min_length: 0
+      do_sample: false
+      early_stopping: false
+      num_beams: 1
+      num_beam_groups: 1
+      diversity_penalty: 0.0
+      temperature: 1.0
+      top_k: 50
+      top_p: 1.0
+      typical_p: 1.0
+      repetition_penalty: 1.0
+      length_penalty: 1.0
+      no_repeat_ngram_size: 0
+      encoder_no_repeat_ngram_size: 0
+      num_return_sequences: 1
+      output_scores: false
+      return_dict_in_generate: false
+      remove_invalid_values: false
+      _name_or_path: ''
+      transformers_version: 4.56.1
+      tf_legacy_loss: false
+      use_bfloat16: false
+      vocab_size: 3000
+      embedding_size: 768
+      hidden_size: 768
+      num_hidden_layers: 6
+      num_attention_heads: 4
+      hidden_act: gelu
+      intermediate_size: 1024
+      hidden_dropout_prob: 0.1
+      attention_probs_dropout_prob: 0.1
+      max_position_embeddings: 1536
+      type_vocab_size: 2
+      initializer_range: 0.02
+      layer_norm_eps: 1.0e-12
+      rotary_value: false
+      use_cache: true
+      model_type: roformer
+      output_attentions: false
+  local_decoder_network:
+    _target_: src.network.customized_roformer.network.CustomizedRoFormerEncoder
+    config:
+      _object_type_: RoFormerConfig
+      _module_: transformers.models.roformer.configuration_roformer
+      return_dict: true
+      output_hidden_states: false
+      torchscript: false
+      pruned_heads: {}
+      tie_word_embeddings: true
+      chunk_size_feed_forward: 0
+      is_encoder_decoder: false
+      is_decoder: false
+      add_cross_attention: false
+      tie_encoder_decoder: false
+      id2label:
+        0: LABEL_0
+        1: LABEL_1
+      label2id:
+        LABEL_0: 0
+        LABEL_1: 1
+      pad_token_id: 0
+      max_length: 20
+      min_length: 0
+      do_sample: false
+      early_stopping: false
+      num_beams: 1
+      num_beam_groups: 1
+      diversity_penalty: 0.0
+      temperature: 1.0
+      top_k: 50
+      top_p: 1.0
+      typical_p: 1.0
+      repetition_penalty: 1.0
+      length_penalty: 1.0
+      no_repeat_ngram_size: 0
+      encoder_no_repeat_ngram_size: 0
+      num_return_sequences: 1
+      output_scores: false
+      return_dict_in_generate: false
+      remove_invalid_values: false
+      _name_or_path: ''
+      transformers_version: 4.56.1
+      tf_legacy_loss: false
+      use_bfloat16: false
+      vocab_size: 3000
+      embedding_size: 768
+      hidden_size: 768
+      num_hidden_layers: 6
+      num_attention_heads: 4
+      hidden_act: gelu
+      intermediate_size: 1024
+      hidden_dropout_prob: 0.1
+      attention_probs_dropout_prob: 0.1
+      max_position_embeddings: 1536
+      type_vocab_size: 2
+      initializer_range: 0.02
+      layer_norm_eps: 1.0e-12
+      rotary_value: false
+      use_cache: true
+      model_type: roformer
+      output_attentions: false
+datamodule:
+  _target_: src._datamodule.base.datamodule.BaseDataModule
+  train:
+    _target_: src.dataset.old_pt.dataset.OldPtDataset
+    batch_size: 16
+    num_workers: 0
+    shuffle: true
+    pin_memory: true
+    drop_last: false
+    persistent_workers: false
+    file_path: /home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt
+    target_length: 192
+    split_ratio: 9
+    stage: train
+  val:
+    _target_: src.dataset.old_pt.dataset.OldPtDataset
+    batch_size: 32
+    num_workers: 0
+    shuffle: false
+    pin_memory: true
+    drop_last: false
+    persistent_workers: false
+    file_path: /home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt
+    target_length: 192
+    split_ratio: 9
+    stage: train
+trainer:
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  precision: 32-true
+  logger: true
+  log_every_n_steps: 10
+  fast_dev_run: false
+  max_steps: -1
+  limit_train_batches: 1.0
+  limit_val_batches: 1.0
+  limit_test_batches: 1.0
+  limit_predict_batches: 1.0
+  overfit_batches: 0.0
+  val_check_interval: 1.0
+  check_val_every_n_epoch: 1
+  num_sanity_val_steps: 2
+  enable_checkpointing: true
+  enable_progress_bar: true
+  enable_model_summary: true
+  accumulate_grad_batches: 1
+  gradient_clip_algorithm: norm
+  inference_mode: true
+  use_distributed_sampler: true
+  detect_anomaly: false
+  barebones: false
+  sync_batchnorm: false
+  reload_dataloaders_every_n_epochs: 0
+loggers:
+  csv:
+    _target_: pytorch_lightning.loggers.CSVLogger
+    version: 0.0.1
+    prefix: ''
+    save_dir: ./output/m2a_example
+    name: m2a_experiment
+    flush_logs_every_n_steps: 1000
+  tensorboard:
+    _target_: pytorch_lightning.loggers.TensorBoardLogger
+    version: 0.0.1
+    prefix: ''
+    save_dir: ./output/m2a_example
+    name: m2a_experiment
+    default_hp_metric: true
+    log_graph: false
+    filename_suffix: ''
+mode: train
+tags: []
+notes: ''
+deterministic: false
