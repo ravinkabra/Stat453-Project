@@ -390,9 +390,6 @@ class OldPtM2ATransformer(BaseModel):
     def save(self, data, filename_base, extension, save_dir, **kwargs):
         return super().save(data, filename_base, extension, save_dir, **kwargs)
 
-    def save(self, data, filename_base, extension, save_dir, **kwargs):
-        return super().save(data, filename_base, extension, save_dir, **kwargs)
-
     def validation_step(self, batch: OldPtModelInput, batch_idx: int):
         mel = batch.mel_data
         acc = batch.acc_data

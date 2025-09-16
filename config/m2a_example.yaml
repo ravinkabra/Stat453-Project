@@ -3,7 +3,6 @@ description: ''
 save_dir: ./output/m2a_example
 experiment_name: m2a_experiment
 version: 0.0.
-save_experiment_version_dir: ./output/m2a_example/training_project/0.0.
 model:
   _target_: src.model.old_pt_m2a_transformer.model.OldPtM2ATransformer
   optimizer:
@@ -16,12 +15,22 @@ model:
     weight_decay: 1.0e-05
     amsgrad: false
   lr_scheduler:
-    _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+    _target_: torch.optim.lr_scheduler.OneCycleLR
     interval: step
-    frequency: 100
+    frequency: 1
     strict: true
-    T_max: 100
-    eta_min: 0.0
+    T_max: 10000
+    eta_min: 1.0e-06
+    max_lr: 0.0001
+    total_steps: 1000000
+    pct_start: 0.005
+    anneal_strategy: cos
+    cycle_momentum: true
+    base_momentum: 0.85
+    max_momentum: 0.95
+    div_factor: 25.0
+    final_div_factor: 10000.0
+    three_phase: false
   metric_manager:
     _target_: src.metric._manager.manager.MetricManager
     metrics:
@@ -46,7 +55,7 @@ model:
           sync_dist: true
           reduce_fx: mean
   global_network:
-    _target_: src.network.roformer.network.RoFormerEncoder
+    _target_: src.network.customized_roformer.network.CustomizedRoFormerEncoder
     config:
       _object_type_: RoFormerConfig
       _module_: transformers.models.roformer.configuration_roformer
@@ -108,7 +117,7 @@ model:
       model_type: roformer
       output_attentions: false
   local_encoder_network:
-    _target_: src.network.roformer.network.RoFormerEncoder
+    _target_: src.network.customized_roformer.network.CustomizedRoFormerEncoder
     config:
       _object_type_: RoFormerConfig
       _module_: transformers.models.roformer.configuration_roformer
@@ -156,9 +165,9 @@ model:
       embedding_size: 768
       hidden_size: 768
       num_hidden_layers: 6
-      num_attention_heads: 4
+      num_attention_heads: 12
       hidden_act: gelu
-      intermediate_size: 1024
+      intermediate_size: 3072
       hidden_dropout_prob: 0.1
       attention_probs_dropout_prob: 0.1
       max_position_embeddings: 1536
@@ -170,7 +179,7 @@ model:
       model_type: roformer
       output_attentions: false
   local_decoder_network:
-    _target_: src.network.roformer.network.RoFormerEncoder
+    _target_: src.network.customized_roformer.network.CustomizedRoFormerEncoder
     config:
       _object_type_: RoFormerConfig
       _module_: transformers.models.roformer.configuration_roformer
@@ -218,9 +227,9 @@ model:
       embedding_size: 768
       hidden_size: 768
       num_hidden_layers: 6
-      num_attention_heads: 4
+      num_attention_heads: 12
       hidden_act: gelu
-      intermediate_size: 1024
+      intermediate_size: 3072
       hidden_dropout_prob: 0.1
       attention_probs_dropout_prob: 0.1
       max_position_embeddings: 1536
@@ -235,7 +244,7 @@ datamodule:
   _target_: src._datamodule.base.datamodule.BaseDataModule
   train:
     _target_: src.dataset.old_pt.dataset.OldPtDataset
-    batch_size: 16
+    batch_size: 4
     num_workers: 0
     shuffle: true
     pin_memory: true
@@ -247,7 +256,7 @@ datamodule:
     stage: train
   val:
     _target_: src.dataset.old_pt.dataset.OldPtDataset
-    batch_size: 32
+    batch_size: 8
     num_workers: 0
     shuffle: false
     pin_memory: true
@@ -289,17 +298,11 @@ trainer:
 loggers:
   csv:
     _target_: pytorch_lightning.loggers.CSVLogger
-    version: 0.0.0
     prefix: ''
-    save_dir: ./output/m2a_example
-    name: m2a_experiment
     flush_logs_every_n_steps: 1000
   tensorboard:
     _target_: pytorch_lightning.loggers.TensorBoardLogger
-    version: 0.0.0
     prefix: ''
-    save_dir: ./output/m2a_example
-    name: m2a_experiment
     default_hp_metric: true
     log_graph: false
     filename_suffix: ''

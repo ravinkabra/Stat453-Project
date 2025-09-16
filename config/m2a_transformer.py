@@ -9,7 +9,7 @@ from src.model.old_pt_m2a_transformer.config import OldPtM2ATransformerConfig
 from src.network.customized_roformer.config import CustomizedRoFormerEncoderParams
 
 from src._optimizer.adam.config import AdamParams
-from src._lr_scheduler.cosine.config import CosineAnnealingLRParams
+from src._lr_scheduler.onecycle.config import OneCycleLRParams
 from src.metric._manager import (
     MetricManagerConfig,
     ManagedMetricConfig,
@@ -35,7 +35,7 @@ from src._callback.sample_saver.config import (
 train_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
-    batch_size=16,
+    batch_size=4,
     num_workers=0,
     persistent_workers=False,
     target_length=192,
@@ -45,7 +45,7 @@ train_dataset = OldPtDatasetConfig(
 val_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
-    batch_size=32,
+    batch_size=8,
     num_workers=0,
     shuffle=False,
     target_length=192,
@@ -54,9 +54,13 @@ val_dataset = OldPtDatasetConfig(
 datamodule = BaseDataModuleConfig(train=train_dataset, val=val_dataset)
 
 optimizer = AdamParams(_target_="torch.optim.Adam", lr=1e-4, weight_decay=1e-5)
-lr_scheduler = CosineAnnealingLRParams(
-    _target_="torch.optim.lr_scheduler.CosineAnnealingLR",
-    frequency=100,
+lr_scheduler = OneCycleLRParams(
+    _target_="torch.optim.lr_scheduler.OneCycleLR",
+    max_lr=1e-4,  # 对应你代码中的 max_lr
+    total_steps=1000000,  # 对应你代码中的 MAX_STEPS
+    pct_start=0.005,  # 对应你代码中的 pct_start
+    frequency=1,  # OneCycleLR 通常每步更新
+    interval="step",  # OneCycleLR 按步更新而不是按 epoch
 )
 metric_manager = MetricManagerConfig(
     metrics={
@@ -82,8 +86,11 @@ local_encoder_network = CustomizedRoFormerEncoderParams(
         vocab_size=3000,
         hidden_size=768,
         num_hidden_layers=6,
-        num_attention_heads=4,
-        intermediate_size=1024,
+        num_attention_heads=12,
+        intermediate_size=3072,
+        hidden_act="gelu",
+        hidden_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.1,
     )
 )
 
@@ -94,6 +101,9 @@ main_encoder_network = CustomizedRoFormerEncoderParams(
         num_hidden_layers=12,
         num_attention_heads=12,
         intermediate_size=3072,
+        hidden_act="gelu",
+        hidden_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.1,
     )
 )
 
@@ -102,8 +112,11 @@ local_decoder_network = CustomizedRoFormerEncoderParams(
         vocab_size=3000,
         hidden_size=768,
         num_hidden_layers=6,
-        num_attention_heads=4,
-        intermediate_size=1024,
+        num_attention_heads=12,
+        intermediate_size=3072,
+        hidden_act="gelu",
+        hidden_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.1,
     )
 )
 
@@ -116,7 +129,7 @@ model = OldPtM2ATransformerConfig(
     metric_manager=metric_manager,
 )
 loggers = {
-    "csv": CSVLoggerParams( flush_logs_every_n_steps=1000),
+    "csv": CSVLoggerParams(flush_logs_every_n_steps=1000),
     "tensorboard": TensorBoardLoggerParams(),
 }
 trainer = BaseTrainerConfig(
@@ -168,4 +181,4 @@ project = ProjectConfig(
     version="0.0.",
 )
 
-project.to_yaml("./config/m2a_example.yaml",use_original_config=True)
+project.to_yaml("./config/m2a_example.yaml", use_original_config=True)
