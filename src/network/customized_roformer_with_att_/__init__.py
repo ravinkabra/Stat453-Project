@@ -14,7 +14,6 @@ Components:
 
 from .config import CustomizedRoFormerEncoderParams
 from .network import CustomizedRoFormerEncoder
-
 __all__ = [
     "CustomizedRoFormerEncoderParams",
     "CustomizedRoFormerEncoder",

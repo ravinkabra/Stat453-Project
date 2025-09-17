@@ -36,5 +36,11 @@ class CustomizedRoFormerEncoderParams(BaseNetworkConfig):
             rotary_value=1.0,
             chunk_size_feed_forward=0,
             use_return_dict=True,
+            # Custom parameters not in the original RoFormerConfig
+            acc_dropout_prob=0.1,
+            random_acc_dropout_prob=0.1,
+            use_acc_dropout=False,
+            use_random_acc_dropout=False,
+            acc_positions=None,
         )
     )
