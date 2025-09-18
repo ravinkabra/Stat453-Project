@@ -6,15 +6,17 @@ from transformers.models.roformer.configuration_roformer import RoFormerConfig
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class CustomizedRoFormerEncoderParams(BaseNetworkConfig):
-    """Params-style config for RoFormer encoder (customized name).
+    """Params-style config for RoFormer encoder (customized name). 
 
+    with customized attention dropout module.
+    
     This Params holds a HuggingFace `RoFormerConfig` instance as `config` and
     a `_target_` so the project's factory can instantiate the encoder and pass
     the prefilled config into it.
     """
 
-    _target_: Literal["src.network.customized_roformer.network.CustomizedRoFormerEncoder"] = Field(
-        default="src.network.customized_roformer.network.CustomizedRoFormerEncoder"
+    _target_: Literal["src.network.customized_roformer_with_att_.network.CustomizedRoFormerEncoder"] = Field(
+        default="src.network.customized_roformer_with_att_.network.CustomizedRoFormerEncoder"
     )
     # The HF config carries detailed hyper-parameters. Provide explicit
     # preset defaults here so users can create params without further steps.
@@ -38,9 +40,7 @@ class CustomizedRoFormerEncoderParams(BaseNetworkConfig):
             use_return_dict=True,
             # Custom parameters not in the original RoFormerConfig
             acc_dropout_prob=0.1,
-            random_acc_dropout_prob=0.1,
             use_acc_dropout=False,
-            use_random_acc_dropout=False,
             acc_positions=None,
         )
     )
