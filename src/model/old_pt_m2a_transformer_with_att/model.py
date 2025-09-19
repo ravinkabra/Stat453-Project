@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from ..base.model import BaseModel
-from .config import OldPtM2ATransformerConfig
+from .config import OldPtM2ATransformerWithAttentionConfig
 from ...dataset.old_pt.model_input import OldPtModelInput
 
 # 设置调试日志
@@ -39,7 +39,7 @@ def fill_with_neg_inf(t: torch.Tensor) -> torch.Tensor:
     return t.float().fill_(float("-inf")).type_as(t)
 
 
-class OldPtM2ATransformer(BaseModel):
+class OldPtM2ATransformerWithAttention(BaseModel):
     """基于 RoFormer 的分层局部/全局编码器模型（旧版 Pt 变体）。
 
     设计要点：
@@ -48,7 +48,7 @@ class OldPtM2ATransformer(BaseModel):
     - 提供采样、预处理、损失计算等工具函数以便训练和推理。
     """
 
-    def __init__(self, config: OldPtM2ATransformerConfig):
+    def __init__(self, config: OldPtM2ATransformerWithAttentionConfig):
         super().__init__(config)
         model_schema = config
 
@@ -61,7 +61,7 @@ class OldPtM2ATransformer(BaseModel):
         self.hidden_size = global_params.config.hidden_size
         # HF config uses `num_hidden_layers` for layer count
         # Lazy import of transformers RoFormer to avoid heavy import at module load
-        from ...network.customized_roformer.network import CustomizedRoFormerEncoder
+        from ...network.customized_roformer_with_att_.network import CustomizedRoFormerEncoder
 
         # Use the provided RoFormerConfig instances from the config params. These
         # were supplied via `CustomizedRoFormerEncoderParams.config`.

@@ -62,7 +62,7 @@ metric_manager = MetricManagerConfig(
         ),
     }
 )
-from src.model.old_pt_m2a_transformer_with_att.config import OldPtM2ATransformerConfig
+from src.model.old_pt_m2a_transformer_with_att.config import OldPtM2ATransformerWithAttentionConfig
 from src.network.customized_roformer_with_att_.config import CustomizedRoFormerEncoderParams
 from transformers.models.roformer import RoFormerConfig
 
@@ -75,11 +75,11 @@ local_encoder_network = CustomizedRoFormerEncoderParams(
         intermediate_size=3072,
         hidden_act="gelu",
         hidden_dropout_prob=0.1,
-        attention_probs_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.0,
         # Custom parameters not in the original RoFormerConfig
-        acc_dropout_prob=0.1,
+        acc_dropout_prob=0.5,
         use_acc_dropout=True,
-        acc_positions=None,
+        acc_positions="even",
         acc_mode="from_acc",
     )
 )
@@ -93,11 +93,11 @@ main_encoder_network = CustomizedRoFormerEncoderParams(
         intermediate_size=3072,
         hidden_act="gelu",
         hidden_dropout_prob=0.1,
-        attention_probs_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.0,
         # Custom parameters not in the original RoFormerConfig
-        acc_dropout_prob=0.1,
-        use_acc_dropout=False,
-        acc_positions=None,
+        acc_dropout_prob=0.5,
+        use_acc_dropout=True,
+        acc_positions="even",
         acc_mode="from_acc",
     )
 )
@@ -111,16 +111,16 @@ local_decoder_network = CustomizedRoFormerEncoderParams(
         intermediate_size=3072,
         hidden_act="gelu",
         hidden_dropout_prob=0.1,
-        attention_probs_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.0,
         # Custom parameters not in the original RoFormerConfig
-        acc_dropout_prob=0.1,
-        use_acc_dropout=False,
-        acc_positions=None,
+        acc_dropout_prob=0.5,
+        use_acc_dropout=True,
+        acc_positions="even",
         acc_mode="from_acc",
     )
 )
 
-model = OldPtM2ATransformerConfig(
+model = OldPtM2ATransformerWithAttentionConfig(
     local_encoder_network=local_encoder_network,
     global_network=main_encoder_network,
     local_decoder_network=local_decoder_network,
@@ -139,22 +139,22 @@ trainer = BaseTrainerConfig(
 
 from src._callback.checkpoint.config import ModelCheckpointParams
 
-callbacks ={
+callbacks = {
     "model_checkpoint": ModelCheckpointParams(
-        monitor="val/training_state/loss",
+        monitor="val/epoch/loss",
         mode="min",
         save_top_k=3,
         save_last=True,
         every_n_epochs=10,
-        filename="{epoch:02d}-{val/training_state/loss:.4f}",
+        filename="{epoch:02d}-{val/epoch/loss:.4f}",
     )
 }
 
 project = ProjectConfig(
     project_name="M2A-Example",
-    save_dir="./output/m2a_example",
+    save_dir="./output/m2a_with_att",
     log_level="INFO",
-    experiment_name="m2a_experiment",
+    experiment_name="dropout_acc",
     datamodule=datamodule,
     model=model,
     mode="train",
@@ -164,4 +164,4 @@ project = ProjectConfig(
     version="0.0.",
 )
 
-project.to_yaml("./config/m2a_example.yaml", use_original_config=True)
+project.to_yaml("./config/m2a_with_att.yaml", use_original_config=True)

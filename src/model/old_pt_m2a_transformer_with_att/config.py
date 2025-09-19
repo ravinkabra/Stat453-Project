@@ -7,11 +7,10 @@ from ...network.customized_roformer_with_att_.config import CustomizedRoFormerEn
 
 
 @dataclass
-class OldPtM2ATransformerConfig(BaseModelConfig):
-    _target_: Literal["src.model.old_pt_m2a_transformer_with_att.model.OldPtM2ATransformer"] = Field(
-        default="src.model.old_pt_m2a_transformer_with_att.model.OldPtM2ATransformer"
+class OldPtM2ATransformerWithAttentionConfig(BaseModelConfig):
+    _target_: Literal["src.model.old_pt_m2a_transformer_with_att.model.OldPtM2ATransformerWithAttention"] = Field(
+        default="src.model.old_pt_m2a_transformer_with_att.model.OldPtM2ATransformerWithAttention"
     )
-
 
     # Replace the scalar hyper-parameters with three network params fields so the
     # model can be constructed from prefilled network configs. This keeps
