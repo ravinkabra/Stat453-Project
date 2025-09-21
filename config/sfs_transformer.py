@@ -2,10 +2,10 @@ from src._project.base.config import ProjectConfig
 from src._datamodule.base.config import BaseDataModuleConfig
 from src.dataset.old_pt.config import OldPtDatasetConfig
 
-# 1. 导入你的新模型配置
+# 导入你的新模型配置
 from src.model.straight_forword_stanley.config import OldPtSFSTransformerConfig
 
-# 2. 直接从 transformers 库导入 RoFormerConfig
+# 直接从 transformers 库导入 RoFormerConfig
 from transformers import RoFormerConfig
 
 from src._optimizer.adam.config import AdamParams
@@ -23,7 +23,7 @@ from src._trainer.base.config import BaseTrainerConfig
 train_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
-    batch_size=4,
+    batch_size=16,
     num_workers=0,
     persistent_workers=False,
     target_length=384,
@@ -33,7 +33,7 @@ train_dataset = OldPtDatasetConfig(
 val_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
-    batch_size=8,
+    batch_size=16,
     num_workers=0,
     shuffle=False,
     target_length=384,

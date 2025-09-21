@@ -5,8 +5,11 @@ from typing import Literal, Optional
 # the top-level `src.network` package.
 from transformers import RoFormerConfig
 
+from pydantic import ConfigDict
 
-@dataclass
+
+# 由于我在使用外部类，所以我要添加 model_config，允许使用任意类型
+@dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class OldPtSFSTransformerConfig(BaseModelConfig):
     # SFS: Straight Forword Stanley
     _target_: Literal["src.model.straight_forword_stanley.model.OldPtSFSTransformer"] = Field(

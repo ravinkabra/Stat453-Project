@@ -1,4 +1,4 @@
-# from config.mnist import project
+from config.sfs_transformer import project
 # from src._project.base.project import ProjectManager
 
 # project_manager = ProjectManager(project)
@@ -6,10 +6,10 @@
 # import multidict
 
 from src._project.base.project import ProjectManager
-from src._project.base.config import ProjectConfig
+# from src._project.base.config import ProjectConfig
 
 # 使用新的 from_yaml 方法加载配置
-project = ProjectConfig.from_yaml("config/m2a_with_att.yaml")
+# project = ProjectConfig.from_yaml("config/sfs_transformer_v0.yaml")
 print("Loaded project config:")
 print(f"  - Name: {project.name}")
 print(f"  - Experiment: {project.experiment_name}")

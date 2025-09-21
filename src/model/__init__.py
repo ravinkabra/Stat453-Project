@@ -6,10 +6,18 @@ from .old_pt_m2a_transformer.config import OldPtM2ATransformerConfig
 from .old_pt_m2a_transformer.model import OldPtM2ATransformer
 from .old_pt_m2a_transformer_with_att.config import OldPtM2ATransformerWithAttentionConfig
 from .old_pt_m2a_transformer_with_att.model import OldPtM2ATransformerWithAttention
+from .straight_forword_stanley.config import OldPtSFSTransformerConfig
+from .straight_forword_stanley.model import OldPtSFSTransformer
 from typing import Literal
 from typing import Union, Any
 
 UnionModelConfig = Union[
-    BaseModelConfig, MnistModelConfig, OldPtM2ATransformerConfig, OldPtM2ATransformerWithAttentionConfig
+    BaseModelConfig,
+    MnistModelConfig,
+    OldPtM2ATransformerConfig,
+    OldPtM2ATransformerWithAttentionConfig,
+    OldPtSFSTransformerConfig,
 ]
-UnionModel = Union[BaseModel, MnistModel, OldPtM2ATransformer, OldPtM2ATransformerWithAttention, Any]
+UnionModel = Union[
+    BaseModel, MnistModel, OldPtM2ATransformer, OldPtM2ATransformerWithAttention, OldPtSFSTransformer, Any
+]

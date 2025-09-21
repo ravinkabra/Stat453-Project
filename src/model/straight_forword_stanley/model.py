@@ -62,7 +62,7 @@ class OldPtSFSTransformer(BaseModel):
         local_dec_params = model_schema.local_decoder_network
 
         # Expose a few convenient attributes used elsewhere in the model implementation.
-        self.hidden_size = global_params.config.hidden_size
+        self.hidden_size = global_params.hidden_size
         # HF config uses `num_hidden_layers` for layer count
         # Lazy import of transformers RoFormer to avoid heavy import at module load
         from transformers.models.roformer.modeling_roformer import RoFormerEncoder
@@ -338,18 +338,8 @@ class OldPtSFSTransformer(BaseModel):
         sos = self.global_sos.view(1, 1, -1).repeat(batch_size, 1, 1)
         h = torch.cat([sos, h[:, :-1]], dim=1)
 
-        # 为全局编码器准备 token_type_ids
-        # 注意：这里的 token_type_ids 也需要与 h_shifted 对齐
-        global_token_type_ids = torch.cat(
-            [
-                torch.zeros(batch_size, 1, device=x.device, dtype=torch.long),  # SOS type
-                token_type_ids[:, :-1],  # 与 h[:, :-1] 对应
-            ],
-            dim=1,
-        )
-
         # 全局 encoder（使用 buffered_future_mask 保证自回归）
-        h_out = self.model(h, attention_mask=self.buffered_future_mask(h), token_type_ids=global_token_type_ids)[0]
+        h_out = self.model(h, attention_mask=self.buffered_future_mask(h))[0]
 
         return self.local_decode(h_out, emb)
 
