@@ -21,7 +21,7 @@ from src._trainer.base.config import BaseTrainerConfig
 
 # --- 数据集配置 ---
 train_dataset = OldPtDatasetConfig(
-    file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
+    file_path="/home/stanley/storage/szheng/dataset/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
     batch_size=16,
     num_workers=0,
@@ -31,7 +31,7 @@ train_dataset = OldPtDatasetConfig(
 )
 
 val_dataset = OldPtDatasetConfig(
-    file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
+    file_path="/home/stanley/storage/szheng/dataset/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
     batch_size=16,
     num_workers=0,
