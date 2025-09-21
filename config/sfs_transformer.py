@@ -19,7 +19,7 @@ from src.metric.value_recoder.config import ValueRecorderParams
 from src._logger import TensorBoardLoggerParams, CSVLoggerParams
 from src._trainer.base.config import BaseTrainerConfig
 
-# --- 数据集配置 (与之前保持一致) ---
+# --- 数据集配置 ---
 train_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
     split_ratio=9,

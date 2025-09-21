@@ -9,8 +9,8 @@ from transformers import RoFormerConfig
 @dataclass
 class OldPtSFSTransformerConfig(BaseModelConfig):
     # SFS: Straight Forword Stanley
-    _target_: Literal["src.model.old_pt_m2a_transformer.model.OldPtSFSTransformer"] = Field(
-        default="src.model.old_pt_m2a_transformer.model.OldPtSFSTransformer"
+    _target_: Literal["src.model.straight_forword_stanley.model.OldPtSFSTransformer"] = Field(
+        default="src.model.straight_forword_stanley.model.OldPtSFSTransformer"
     )
 
     # Replace the scalar hyper-parameters with three network params fields so the
