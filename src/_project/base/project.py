@@ -158,8 +158,7 @@ class ProjectManager:
 
         self._log_info("🎉 所有组件构建完成！")
         return model, datamodule, trainer
-
-    def train(self) -> None:
+    def train(self, ckpt_path: Optional[str] = None) -> None:
         """开始训练"""
         self._log_info("🚀 开始训练...")
 
@@ -172,30 +171,30 @@ class ProjectManager:
             pl.seed_everything(self.config.seed, workers=True)
 
         # 开始训练
-        trainer.fit(model, datamodule=datamodule)
+        trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
 
         self._log_info("✅ 训练完成！")
 
-    def validate(self) -> List[Dict[str, Any]]:
+    def validate(self, ckpt_path: Optional[str] = None) -> List[Dict[str, Any]]:
         """运行验证"""
         self._log_info("🔍 开始验证...")
 
         model, datamodule, trainer = self.build_all()
 
         # 运行验证
-        results = trainer.validate(model, datamodule=datamodule)
+        results = trainer.validate(model, datamodule=datamodule, ckpt_path=ckpt_path)
 
         self._log_info("✅ 验证完成！")
         return results
 
-    def test(self) -> List[Dict[str, Any]]:
+    def test(self, ckpt_path: Optional[str] = None) -> List[Dict[str, Any]]:
         """运行测试"""
         self._log_info("🧪 开始测试...")
 
         model, datamodule, trainer = self.build_all()
 
         # 运行测试
-        results = trainer.test(model, datamodule=datamodule)
+        results = trainer.test(model, datamodule=datamodule, ckpt_path=ckpt_path)
 
         self._log_info("✅ 测试完成！")
         return results
