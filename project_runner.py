@@ -9,7 +9,7 @@ from src._project.base.project import ProjectManager
 from src._project.base.config import ProjectConfig
 
 # 使用新的 from_yaml 方法加载配置
-project = ProjectConfig.from_yaml("config/m2a_with_att.yaml")
+project = ProjectConfig.from_yaml("config/m2a_with_att_dropout.yaml")
 print("Loaded project config:")
 print(f"  - Name: {project.name}")
 print(f"  - Experiment: {project.experiment_name}")

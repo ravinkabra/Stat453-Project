@@ -31,24 +31,24 @@ from src._callback.sample_saver.config import (
     SampleSaverCallbackConfig,
     SaveKeyConfig,
 )
-
+target_lenth = 384
 train_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
-    batch_size=4,
+    batch_size=8,
     num_workers=0,
     persistent_workers=False,
-    target_length=192,
+    target_length=target_lenth,
     shuffle=True,
 )
 
 val_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
-    batch_size=8,
+    batch_size=12,
     num_workers=0,
     shuffle=False,
-    target_length=192,
+    target_length=target_lenth,
     persistent_workers=False,
 )
 datamodule = BaseDataModuleConfig(train=train_dataset, val=val_dataset)
@@ -136,47 +136,27 @@ trainer = BaseTrainerConfig(
     # max_epochs=3,
     log_every_n_steps=10,
 )
+from src._callback.checkpoint.config import ModelCheckpointParams
 callbacks = {
-    # "sample_saver": SampleSaverCallbackConfig(
-    #     save_dir="./output/mnist_example/samples",
-    #     save_keys={
-    #         "image": SaveKeyConfig(
-    #             source="batch",
-    #             keys=["image"],
-    #             format="image",
-    #             extension=".png",
-    #             phases=["val", "test"],
-    #             save_frequency=10,
-    #         ),
-    #         "label": SaveKeyConfig(
-    #             source="batch",
-    #             keys=["label"],
-    #             format="json",
-    #             extension=".json",
-    #             phases=["val", "test"],
-    #             save_frequency=10,
-    #         ),
-    #         "preds": SaveKeyConfig(
-    #             source="outputs",
-    #             keys=["preds"],
-    #             format="json",
-    #             extension=".json",
-    #             phases=["val", "test"],
-    #             save_frequency=10,
-    #         ),
-    #     },
-    # )
+    "model_checkpoint": ModelCheckpointParams(
+        monitor="val/epoch/loss",
+        mode="min",
+        save_top_k=3,
+        save_last=True,
+        every_n_epochs=10,
+        filename="{epoch:02d}-{val/epoch/loss:.4f}",
+    )
 }
 project = ProjectConfig(
     project_name="M2A-Example",
     save_dir="./output/m2a_example",
     log_level="INFO",
-    experiment_name="m2a_experiment",
+    experiment_name=f"m2a_experiment-len:{target_lenth}",
     datamodule=datamodule,
     model=model,
     mode="train",
     loggers=loggers,
-    # callbacks=callbacks,
+    callbacks=callbacks,
     trainer=trainer,
     version="0.0.",
 )
