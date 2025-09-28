@@ -9,7 +9,10 @@ from .old_pt_m2a_transformer_with_att.model import OldPtM2ATransformerWithAttent
 from typing import Literal
 from typing import Union, Any
 
+from .old_pt_m2a_new_.config import OldPtM2ANewConfig
+from .old_pt_m2a_new_.model import OldPtM2ANew
+
 UnionModelConfig = Union[
-    BaseModelConfig, MnistModelConfig, OldPtM2ATransformerConfig, OldPtM2ATransformerWithAttentionConfig
+    BaseModelConfig, MnistModelConfig, OldPtM2ATransformerConfig, OldPtM2ATransformerWithAttentionConfig, OldPtM2ANewConfig
 ]
-UnionModel = Union[BaseModel, MnistModel, OldPtM2ATransformer, OldPtM2ATransformerWithAttention, Any]
+UnionModel = Union[BaseModel, MnistModel, OldPtM2ATransformer, OldPtM2ATransformerWithAttention, OldPtM2ANew, Any]

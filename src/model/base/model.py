@@ -99,3 +99,12 @@ class BaseModel(LightningModule, ABC):
     def _inference_forward(self, inputs):
         """推理时的前向传播，子类可重写处理细节差异"""
         return self.forward(inputs)
+    
+    # def _move_to_device(self, batch: OldPtModelInput) -> OldPtModelInput:
+    #     """将 batch 中的张量移动到模型的 device 上。
+
+    #     这个函数对 batch 的每个属性调用 .to(self.device)（如果存在），并返回
+    #     与原始 batch 同类型的对象（通过 type(batch) 重建）。这对多设备训练/推理很有用。
+    #     """
+    #     return type(batch)(**{k: (v.to(self.device) if hasattr(v, "to") else v) for k, v in batch.__dict__.items()})
+
