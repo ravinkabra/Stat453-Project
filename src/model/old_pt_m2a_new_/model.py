@@ -273,7 +273,10 @@ class OldPtM2ANew(BaseModel):
             next_probs = F.one_hot(logits.argmax(dim=-1), N_TOKENS).float()  # [B*S, sub_S, N_TOKENS]
         else:
             next_probs = F.softmax(logits / temperature, dim=-1)  # [B*S, sub_S, N_TOKENS]
-        y_next = torch.multinomial(next_probs, 1)  # [B*S, sub_S, 1]
+            
+        next_probs = next_probs.reshape(-1, N_TOKENS)  # [B*S*sub_S, N_TOKENS]
+        y_next = torch.multinomial(next_probs, 1)  # [B*S*sub_S, 1]
+        y_next = y_next.view(h.size(0), h.size(1), 1)  # [B*S, sub_S, 1]
         return y_next
 
     def buffered_future_mask(self, tensor: torch.Tensor) -> torch.Tensor:
@@ -405,7 +408,7 @@ class OldPtM2ANew(BaseModel):
         token_type_ids = frame_type.unsqueeze(0).unsqueeze(-1).expand(batch_size, seq_len, subseq_len)
         local_h = self.local_encode(x, token_type_ids)  # [B*S, sub_S, H]
         global_h = local_h.view(batch_size, seq_len, subseq_len, -1)  # [B, S, sub_S, H]
-        sos = self.global_sos.view(1, 1, 1, -1).repeat(batch_size, 1, 1, 1)
+        sos = self.global_sos.view(1, 1, 1, -1).repeat(batch_size, seq_len, subseq_len, 1)
         global_h = torch.cat([sos, global_h], dim=1)  # [B, S+1, sub_S, H]
 
         reduced_global_h = global_h[:, :, -1, :]  # [B, S+1, H]
@@ -418,11 +421,14 @@ class OldPtM2ANew(BaseModel):
                 torch.zeros_like(x_mel_gt, dtype=torch.long, device=x_mel_gt.device),
             )  # [B*S_mel, sub_S, H]
             global_h_mel = local_h_mel.view(batch_size, seq_len_gt, subseq_len, -1)  # [B, S_mel, sub_S, H]
-            sos_mel = self.global_sos.view(1, 1, 1, -1).repeat(batch_size, 1, 1, 1)
-            global_h_mel = torch.cat([sos_mel, global_h_mel[:, :-1, :, :]], dim=1)  # [B, S_mel -1 +1, sub_S, H]
+           
+            # SOS mel 不该存在
+            # sos_mel = self.global_sos.view(1, 1, 1, -1).repeat(batch_size, 1, 1, 1)
+            # global_h_mel = torch.cat([sos_mel, global_h_mel[:, :-1, :, :]], dim=1)  # [B, S_mel -1 +1, sub_S, H]
             reduced_global_h_mel = global_h_mel[:, :, -1, :]  # [B, S_mel, H]
             print("with gt!")
             for i in range(0, max_seq_len):
+                print(f"Sampling {i}/{max_seq_len}")
                 if i % 10 == 0:
                     # print('Sampling', i, '/', max_seq_len)
                     ...
@@ -432,19 +438,24 @@ class OldPtM2ANew(BaseModel):
                         attention_mask=self.buffered_future_mask(reduced_global_h),
                         interleave_pos=True,
                     )[0]  # [B, cur_len, H]
+                    print(f"reduced_ golobal h out shape: {reduced_global_h_out.shape}")
                     y_next = self.local_sampling(
                         local_h, reduced_global_h=reduced_global_h_out, temperature=temperature
                     )  # [B*S, sub_S, 1]
-                    y_next = y_next.view(batch_size, -1, subseq_len)[:, -1, :]  # [B, S, sub_S]
-                    y.append(y_next)
+                    y_next = y_next.view(batch_size, -1, subseq_len)  # [B, S, sub_S]
+                    print(f"y_next shape: {y_next.shape}")
+                    y.append(y_next[:, -1, :])  # [B, sub_S]
                     # next mel frame: 0
-                    token_type_ids = torch.ones_like(y_next, dtype=torch.long, device=y_next.device)  # [B, S, sub_S]
+                    token_type_ids = torch.ones_like(y_next[:, -1:, :], dtype=torch.long, device=y_next.device)  # [B,1, sub_S]
+                    
+                    local_h = self.local_encode( y_next[:, -1:, :], token_type_ids=token_type_ids)  # [B*S, sub_S, H]
+                    print(f"local h shape: {local_h.shape}")
                     reduced_global_h = torch.cat(
                         [
                             reduced_global_h,
-                            self.local_encode(y_next, token_type_ids=token_type_ids)[0].view(
+                            local_h.view(
                                 batch_size, -1, subseq_len, self.hidden_size
-                            )[:, -1, :, :],
+                            )[:, :, -1, :],
                         ],
                         dim=1,
                     )  # [B, cur_len + 1, H]
