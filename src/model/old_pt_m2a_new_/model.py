@@ -12,7 +12,7 @@ from ...dataset.old_pt.model_input import OldPtModelInput
 # 设置调试日志
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(name)s - %(levelname)s - %(message)s")
-DEBUG = False
+DEBUG = True
 
 # Constants
 TRAIN_LENGTH = 192
@@ -240,6 +240,7 @@ class OldPtM2ANew(BaseModel):
         """
         mask, emb, batch_size, seq_len = self._prepare_local_inputs(x, token_type_ids)
         h = self.local_encoder(emb)[0]
+
         return h
 
     def local_decode(self, h: torch.Tensor, reduced_global_h: torch.Tensor):
@@ -250,31 +251,159 @@ class OldPtM2ANew(BaseModel):
         返回 logits，形状与解码器输出对应（用于后续 softmax/采样）。
         - logits: [batch*seq, subseq, N_TOKENS]
         """
-        batch_size,seq_len,hidden_size = reduced_global_h.shape
-        reduced_global_h = reduced_global_h.view(batch_size * seq_len, 1,-1) # [B*S, 1, H]
-        
-        h = h + reduced_global_h # [B*S, sub_S, H]
+        batch_size, seq_len, hidden_size = reduced_global_h.shape
+        reduced_global_h = reduced_global_h.view(batch_size * seq_len, 1, -1)  # [B*S, 1, H]
+
+        h = h + reduced_global_h  # [B*S, sub_S, H]
         hidden = self.local_decoder(h)[0]
         return self.final_decoder(hidden)
 
     def local_sampling(self, h: torch.Tensor, reduced_global_h: torch.Tensor, temperature: float = 1.0):
-        """基于局部 decoder 进行自回归采样。
+        """基于局部 decoder 进行采样（新版本：并行生成subseq内的所有token）
 
-        - h: 局部聚合向量，作为采样初始上下文 [batch*seq, subseq, hidden]
-        - reduced_global_h: 全局上下文表示，形状 [batch*seq, hidden]
-        - temperature: 采样温度，0 表示贪心（取 argmax）
-        过程：迭代地通过 local_decoder 预测下一个 token，直到所有样本触发 EOS 或达到最大长度。
-        返回采样到的 token id 序列（不含 SOS）。
-        - y: [batch*seq, subseq, 1]
+        Args:
+            h: 局部隐藏表示 [batch*seq, subseq, hidden]
+            reduced_global_h: 全局上下文表示 [batch, seq, hidden] 或 [batch*seq, hidden]
+            temperature: 采样温度
+
+        Returns:
+            生成的token序列 [batch*seq, subseq, 1]
         """
-        dec_h = self.local_decoder(h)[0]
-        logits = self.final_decoder(dec_h)  # [B*S, sub_S, N_TOKENS]
+        # 处理全局上下文的维度
+        if reduced_global_h.dim() == 3:  # [B, S, H]
+            batch_size, seq_len, hidden_size = reduced_global_h.shape
+            reduced_global_h = reduced_global_h.view(batch_size * seq_len, 1, hidden_size)  # [B*S, 1, H]
+        elif reduced_global_h.dim() == 2:  # [B*S, H]
+            reduced_global_h = reduced_global_h.unsqueeze(1)  # [B*S, 1, H]
+
+        # 广播全局上下文到所有subseq位置
+        reduced_global_h = reduced_global_h.expand(-1, h.size(1), -1)  # [B*S, sub_S, H]
+
+        # 融合局部和全局信息
+        combined_h = h + reduced_global_h  # [B*S, sub_S, H]
+
+        # 通过local_decoder和final_decoder生成
+        hidden = self.local_decoder(combined_h)[0]  # [B*S, sub_S, H]
+        logits = self.final_decoder(hidden)  # [B*S, sub_S, N_TOKENS]
+
+        # 采样
         if temperature == 0:
-            next_probs = F.one_hot(logits.argmax(dim=-1), N_TOKENS).float()  # [B*S, sub_S, N_TOKENS]
+            tokens = logits.argmax(dim=-1)  # [B*S, sub_S]
         else:
-            next_probs = F.softmax(logits / temperature, dim=-1)  # [B*S, sub_S, N_TOKENS]
-        y_next = torch.multinomial(next_probs, 1)  # [B*S, sub_S, 1]
-        return y_next
+            probs = F.softmax(logits / temperature, dim=-1)  # [B*S, sub_S, N_TOKENS]
+            probs_flat = probs.view(-1, probs.size(-1))  # [B*S*sub_S, N_TOKENS]
+            tokens_flat = torch.multinomial(probs_flat, 1).squeeze(-1)  # [B*S*sub_S]
+            tokens = tokens_flat.view(h.shape[0], h.shape[1])  # [B*S, sub_S]
+
+        return tokens.unsqueeze(-1)  # [B*S, sub_S, 1] 保持原接口
+
+    def _generate_frame_with_global_context(
+        self, global_context: torch.Tensor, max_subseq_len: int, temperature: float = 1.0
+    ):
+        """基于全局上下文逐token自回归生成一帧
+        
+        参考原始模型的local_sampling方法，但使用全局上下文作为初始状态
+        
+        Args:
+            global_context: 全局上下文向量 [batch, hidden_size]
+            max_subseq_len: 子序列最大长度
+            temperature: 采样温度
+            
+        Returns:
+            generated_frame: 生成的帧 [batch, actual_len] (actual_len <= max_subseq_len)
+        """
+        batch_size, hidden_size = global_context.shape
+        device = global_context.device
+        
+        # 初始化
+        y = torch.zeros((batch_size, 0), dtype=torch.long, device=device)
+        emb = global_context.unsqueeze(1)  # [batch, 1, hidden_size] 使用全局上下文作为初始embedding
+        eos_triggered = torch.zeros(batch_size, dtype=torch.bool, device=device)
+        
+        for _ in range(max_subseq_len):
+            # 通过local decoder生成下一个token的logits
+            dec_h = self.local_decoder(emb, attention_mask=self.buffered_future_mask(emb))[0]
+            logits = self.final_decoder(dec_h)  # [batch, seq_len, N_TOKENS]
+            
+            if temperature == 0:
+                next_probs = F.one_hot(logits[:, -1].argmax(dim=-1), N_TOKENS).float()
+            else:
+                next_probs = F.softmax(logits[:, -1] / temperature, dim=-1)
+                
+            y_next = torch.multinomial(next_probs, 1)  # [batch, 1]
+            
+            # 如果已经触发EOS，用PAD_TOKEN填充
+            y_next[eos_triggered, :] = PAD_TOKEN
+            eos_triggered = eos_triggered | (y_next.squeeze(1) == EOS_TOKEN)
+            
+            y = torch.cat([y, y_next], dim=1)
+            
+            # 如果所有样本都触发了EOS，提前结束
+            if torch.all(eos_triggered):
+                break
+                
+            # 更新embedding序列，添加新生成的token
+            token_type_emb = self.token_type_embeddings(torch.ones_like(y_next))  # 伴奏类型=1
+            new_emb = self.local_embedding(y_next) + token_type_emb
+            emb = torch.cat([emb, new_emb], dim=1)
+        
+        return y
+
+    def _generate_next_frame_autoregressive(
+        self, current_sequence: torch.Tensor, frame_type: int, temperature: float = 1.0
+    ):
+        """自回归方式生成下一帧，使用正确的逐token方法
+
+        Args:
+            current_sequence: 当前序列 [B, current_seq_len, subseq_len]
+            frame_type: 帧类型 0=melody, 1=acc
+            temperature: 采样温度
+
+        Returns:
+            生成的下一帧 [B, 1, subseq_len] (填充到固定长度)
+        """
+        batch_size, current_seq_len, subseq_len = current_sequence.shape
+        device = current_sequence.device
+
+        # 构建 token_type_ids（奇偶帧交替）
+        frame_types = torch.arange(current_seq_len, device=device) % 2
+        token_type_ids = frame_types.unsqueeze(0).unsqueeze(-1).expand(batch_size, current_seq_len, subseq_len)
+
+        # 进行局部编码
+        local_h_current = self.local_encode(current_sequence, token_type_ids)  # [B*S, sub_S, H]
+
+        # 提取全局表示
+        reduced_global_h = local_h_current[:, -1, :].view(batch_size, current_seq_len, -1)  # [B, S, H]
+
+        # 添加SOS并进行全局编码
+        sos = self.global_sos.view(1, 1, -1).repeat(batch_size, 1, 1)
+        global_input = torch.cat([sos, reduced_global_h], dim=1)  # [B, S+1, H]
+
+        # 全局编码
+        global_output = self.model(
+            global_input, attention_mask=self.buffered_future_mask(global_input), interleave_pos=True
+        )[0]  # [B, S+1, H]
+
+        # 使用最后一个全局状态作为上下文，逐token生成新帧
+        global_context = global_output[:, -1, :]  # [B, H]
+        generated_tokens = self._generate_frame_with_global_context(
+            global_context, subseq_len, temperature
+        )  # [B, actual_len]
+        
+        # 填充到固定长度
+        actual_len = generated_tokens.shape[1]
+        if actual_len < subseq_len:
+            padding = torch.full(
+                (batch_size, subseq_len - actual_len), 
+                PAD_TOKEN, 
+                dtype=torch.long, 
+                device=device
+            )
+            generated_tokens = torch.cat([generated_tokens, padding], dim=1)
+        elif actual_len > subseq_len:
+            generated_tokens = generated_tokens[:, :subseq_len]
+
+        return generated_tokens.unsqueeze(1)  # [B, 1, sub_S]
 
     def buffered_future_mask(self, tensor: torch.Tensor) -> torch.Tensor:
         """生成（或重用） causal future mask，用于自回归 attention。
@@ -314,8 +443,6 @@ class OldPtM2ANew(BaseModel):
         idx = torch.arange(seq_len, device=x.device)
         frame_type = (idx % 2 == 0).long()
         token_type_ids = frame_type.unsqueeze(0).unsqueeze(-1).expand(batch_size, seq_len, subseq_len)
-        # sos_type = frame_type.unsqueeze(0).unsqueeze(-1).expand(batch_size, seq_len, 1)
-        # token_type_ids = torch.cat([sos_type, token_type_ids], dim=-1)
 
         # 局部编码
         local_h = self.local_encode(x, token_type_ids)  # [B*S, sub_S, H]
@@ -328,7 +455,7 @@ class OldPtM2ANew(BaseModel):
         # 全局 encoder（使用 buffered_future_mask 保证自回归）
         reduced_global_h = self.model(
             reduced_global_h, attention_mask=self.buffered_future_mask(reduced_global_h), interleave_pos=True
-        )[0] # [B, S+1, H]
+        )[0]  # [B, S+1, H]
         return self.local_decode(local_h, reduced_global_h)
 
     def preprocess(
@@ -399,139 +526,130 @@ class OldPtM2ANew(BaseModel):
         return loss
 
     def global_sampling(self, x: torch.Tensor, x_mel_gt: torch.Tensor = None, max_seq_len=384, temperature=1.0):
+        """全局采样：基于给定的起始帧序列，生成后续的音乐序列"""
         batch_size, seq_len, subseq_len = x.shape
+
+        # 编码初始序列
         idx = torch.arange(seq_len, device=x.device)
-        frame_type = (idx % 2 == 0).long()  # → [seq_len], 1 at even idx (acc), 0 at odd idx (mel)
+        frame_type = (idx % 2 == 0).long()
         token_type_ids = frame_type.unsqueeze(0).unsqueeze(-1).expand(batch_size, seq_len, subseq_len)
         local_h = self.local_encode(x, token_type_ids)  # [B*S, sub_S, H]
-        global_h = local_h.view(batch_size, seq_len, subseq_len, -1)  # [B, S, sub_S, H]
-        sos = self.global_sos.view(1, 1, 1, -1).repeat(batch_size, 1, 1, 1)
-        global_h = torch.cat([sos, global_h], dim=1)  # [B, S+1, sub_S, H]
 
-        reduced_global_h = global_h[:, :, -1, :]  # [B, S+1, H]
+        # 聚合为全局表示
+        reduced_global_h = local_h[:, -1, :].view(batch_size, seq_len, -1)  # [B, S, H]
 
-        y = [x[:, i, :] for i in range(seq_len)]  # y will be returned by a list a0,m0,a1,m1,a_to_be_2
+        # 添加 SOS
+        sos = self.global_sos.view(1, 1, -1).repeat(batch_size, 1, 1)
+        reduced_global_h = torch.cat([sos, reduced_global_h], dim=1)  # [B, S+1, H]
+
+        # 初始化输出
+        y = [x[:, i, :] for i in range(seq_len)]
+
         if x_mel_gt is not None:
+            # 带真值旋律的生成
             _, seq_len_gt, _ = x_mel_gt.shape
-            local_h_mel = self.local_encode(
-                x_mel_gt,
-                torch.zeros_like(x_mel_gt, dtype=torch.long, device=x_mel_gt.device),
-            )  # [B*S_mel, sub_S, H]
-            global_h_mel = local_h_mel.view(batch_size, seq_len_gt, subseq_len, -1)  # [B, S_mel, sub_S, H]
-            sos_mel = self.global_sos.view(1, 1, 1, -1).repeat(batch_size, 1, 1, 1)
-            global_h_mel = torch.cat([sos_mel, global_h_mel[:, :-1, :, :]], dim=1)  # [B, S_mel -1 +1, sub_S, H]
-            reduced_global_h_mel = global_h_mel[:, :, -1, :]  # [B, S_mel, H]
+            mel_token_type_ids = torch.zeros_like(x_mel_gt, dtype=torch.long)
+            local_h_mel = self.local_encode(x_mel_gt, mel_token_type_ids)
+            reduced_global_h_mel = local_h_mel[:, -1, :].view(batch_size, seq_len_gt, -1)  # [B, S_mel, H]
+
             print("with gt!")
             for i in range(0, max_seq_len):
-                if i % 10 == 0:
-                    # print('Sampling', i, '/', max_seq_len)
-                    ...
-                if i % 2 == 0:
-                    reduced_global_h_out = self.model(
-                        reduced_global_h,
-                        attention_mask=self.buffered_future_mask(reduced_global_h),
-                        interleave_pos=True,
-                    )[0]  # [B, cur_len, H]
-                    y_next = self.local_sampling(
-                        local_h, reduced_global_h=reduced_global_h_out, temperature=temperature
-                    )  # [B*S, sub_S, 1]
-                    y_next = y_next.view(batch_size, -1, subseq_len)[:, -1, :]  # [B, S, sub_S]
+                if i % 2 == 0:  # 生成伴奏帧
+                    # 用自回归采样生成新帧
+                    current_sequence = torch.stack(y, dim=1)  # [B, cur_len, sub_S]
+                    y_next = self._generate_next_frame_autoregressive(current_sequence, frame_type=1, temperature=temperature).squeeze(1)  # [B, sub_S]
                     y.append(y_next)
-                    # next mel frame: 0
-                    token_type_ids = torch.ones_like(y_next, dtype=torch.long, device=y_next.device)  # [B, S, sub_S]
-                    reduced_global_h = torch.cat(
-                        [
-                            reduced_global_h,
-                            self.local_encode(y_next, token_type_ids=token_type_ids)[0].view(
-                                batch_size, -1, subseq_len, self.hidden_size
-                            )[:, -1, :, :],
-                        ],
-                        dim=1,
-                    )  # [B, cur_len + 1, H]
-                elif i % 2 == 1:  # use gt melody
-                    global_h_prev_mel = reduced_global_h_mel[:, i // 2, :].unsqueeze(1)  # [B, 1, H]
-                    reduced_global_h = torch.cat([reduced_global_h, global_h_prev_mel], dim=1)  # [B, cur_len + 1, H]
-                    y.append(x_mel_gt[:, i // 2, :])  # [B, S_mel//2 ,sub_S]
-        else:
-            for i in range(0, max_seq_len):
-                # if i % 10 == 0:
-                #     print('Sampling', i, '/', max_seq_len)
-                reduced_global_h_out = self.model(
-                    reduced_global_h,
-                    attention_mask=self.buffered_future_mask(reduced_global_h),
-                    interleave_pos=True,
-                )[0]  # [B, cur_len, H]
-                y_next = self.local_sampling(
-                    local_h,
-                    reduced_global_h_out,
-                    temperature=temperature,
-                )  # [B*S, sub_S, 1]
-                y.append(y_next)
-                if i % 2 == 0:  # next acc frame: 1 ; next mel frame: 0
-                    token_type_ids = torch.ones_like(y_next, dtype=torch.long, device=y_next.device)  # [B, S, sub_S]
-                else:
-                    token_type_ids = torch.zeros_like(y_next, dtype=torch.long, device=y_next.device)  # [B, S, sub_S]
 
-                reduced_global_h = torch.cat(
-                    [
-                        reduced_global_h,
-                        self.local_encode(y_next, token_type_ids=token_type_ids)[0].view(
-                            batch_size, -1, subseq_len, self.hidden_size
-                        )[:, -1, :, :],
-                    ],
-                    dim=1,
-                )  # [B, cur_len + 1, H]
+                    # 编码新生成的帧并更新全局状态
+                    new_token_type_ids = torch.ones_like(y_next, dtype=torch.long)  # [B, sub_S]
+                    new_local_h = self.local_encode(
+                        y_next.unsqueeze(1), new_token_type_ids.unsqueeze(1)
+                    )  # [B, 1, sub_S] -> [B*1, sub_S, H]
+                    new_reduced_h = new_local_h[:, -1, :].view(batch_size, 1, -1)  # [B, 1, H]
+                    reduced_global_h = torch.cat([reduced_global_h, new_reduced_h], dim=1)
+
+                elif i % 2 == 1:  # 使用真值旋律
+                    mel_idx = i // 2
+                    if mel_idx < seq_len_gt:
+                        mel_h = reduced_global_h_mel[:, mel_idx : mel_idx + 1, :]  # [B, 1, H]
+                        reduced_global_h = torch.cat([reduced_global_h, mel_h], dim=1)
+                        y.append(x_mel_gt[:, mel_idx, :])
+        else:
+            # 完全自由生成
+            for i in range(0, max_seq_len):
+                frame_type = 1 if i % 2 == 0 else 0  # 0=melody, 1=acc
+                current_sequence = torch.stack(y, dim=1)  # [B, cur_len, sub_S]
+                y_next = self._generate_next_frame_autoregressive(current_sequence, frame_type=frame_type, temperature=temperature).squeeze(1)  # [B, sub_S]
+                y.append(y_next)
+
+                # 编码新生成的帧并更新全局状态
+                new_token_type_ids = torch.full_like(y_next, frame_type, dtype=torch.long)  # [B, sub_S]
+                new_local_h = self.local_encode(
+                    y_next.unsqueeze(1), new_token_type_ids.unsqueeze(1)
+                )  # [B, 1, sub_S] -> [B*1, sub_S, H]
+                new_reduced_h = new_local_h[:, -1, :].view(batch_size, 1, -1)  # [B, 1, H]
+                reduced_global_h = torch.cat([reduced_global_h, new_reduced_h], dim=1)
+
         return y
 
     def global_sampling_from_scratch(self, x_mel: torch.LongTensor, temperature: float = 1.0, max_seq_len=384):
+        """从旋律序列生成伴奏序列"""
         batch_size, seq_len, subseq_len = x_mel.shape
 
-        device = x_mel.device
+        # 编码旋律序列
+        mel_token_type_ids = torch.zeros_like(x_mel, dtype=torch.long)  # melody type = 0
+        local_h_mel = self.local_encode(x_mel, token_type_ids=mel_token_type_ids)  # [B*S, sub_S, H]
+        reduced_global_h_mel = local_h_mel[:, -1, :].view(batch_size, seq_len, -1)  # [B, S, H]
 
-        # Build program IDs = 0 for all melody tokens
-        token_type_ids = torch.zeros_like(x_mel, dtype=torch.long)  # [B, S, sub_S]
-        local_h_mel = self.local_encode(x_mel, token_type_ids=token_type_ids)  # [B*S, sub_S, H]
-        global_h_mel = local_h_mel.view(batch_size, seq_len, subseq_len, -1)  # [B, S, sub_S, H]
-        local_h = local_h_mel.clone()
-        reduced_global_h_mel = global_h_mel[:, :, -1, :]
-        reduced_global_h = reduced_global_h_mel.clone()  # [B, S, H]
-
-        # local_h_mel = local_h_mel.view(batch_size, seq_len, self.hidden_size)  # [B, S, H]
-
-        # Prepare SOS for global
+        # 初始化全局状态（只有SOS）
         sos = self.global_sos.view(1, 1, -1).repeat(batch_size, 1, 1)  # [B, 1, H]
+        reduced_global_h = sos
 
-        # Will store generated accompaniment frames
-        y = []  # each entry: [B, L]
+        y = []  # 存储生成的序列
 
-        # Start with just [SOS]
-        h = sos  # [B, 1, H]
         for t in range(max_seq_len):
             if t > 0:
-                # Append previous melody summary before generating new accompaniment
-                global_h_prev_mel = reduced_global_h_mel[:, t - 1, :].unsqueeze(1)  # [B, 1, H]
-                reduced_global_h = torch.cat([reduced_global_h, global_h_prev_mel], dim=1)  # [B, cur_len + 1, H]
-                y.append(x_mel[:, t - 1, :])  # [B, S_mel//2 ,sub_S]
+                # 每次生成伴奏前，先添加对应的旋律帧
+                if t - 1 < seq_len:
+                    mel_frame_h = reduced_global_h_mel[:, t - 1 : t, :]  # [B, 1, H]
+                    reduced_global_h = torch.cat([reduced_global_h, mel_frame_h], dim=1)
+                    y.append(x_mel[:, t - 1, :])  # 添加旋律帧
 
-            reduced_global_h_out = self.model(
-                reduced_global_h, attention_mask=self.buffered_future_mask(reduced_global_h), interleave_pos=True
-            )[0]
-            y_next = self.local_sampling(local_h, reduced_global_h_out, temperature=temperature)
-            y.append(y_next)
+            # 全局编码
+            global_out = self.model(
+                reduced_global_h,
+                attention_mask=self.buffered_future_mask(reduced_global_h),
+                interleave_pos=True,
+            )[0]  # [B, cur_len, H]
 
-            # next acc frame: 1 ; next mel frame: 0
-            token_type_ids = torch.ones_like(y_next, dtype=torch.long, device=y_next.device)  # [B, S, sub_S]
+            # 生成伴奏帧 - 使用正确的解码流程
+            # 创建虚拟的局部隐藏状态来进行解码
+            dummy_local_h = torch.zeros(batch_size, subseq_len, self.hidden_size, device=global_out.device)
 
-            reduced_global_h = torch.cat(
-                [
-                    reduced_global_h,
-                    self.local_encode(y_next, token_type_ids=token_type_ids)[0].view(
-                        batch_size, -1, subseq_len, self.hidden_size
-                    )[:, -1, :, :],
-                ],
-                dim=1,
-            )  # [B, cur_len + 1, H]
-        return y  # list of S tensors [B, L]
+            # 使用当前全局状态进行局部解码
+            current_global_state = global_out[:, -1:, :]  # [B, 1, H]
+            logits = self.local_decode(dummy_local_h, current_global_state)  # [B, sub_S, N_TOKENS]
+
+            # 采样生成伴奏帧
+            if temperature == 0:
+                acc_frame = logits.argmax(dim=-1)  # [B, sub_S]
+            else:
+                probs = F.softmax(logits / temperature, dim=-1)  # [B, sub_S, N_TOKENS]
+                probs_flat = probs.view(-1, probs.size(-1))  # [B*sub_S, N_TOKENS]
+                tokens_flat = torch.multinomial(probs_flat, 1).squeeze(-1)  # [B*sub_S]
+                acc_frame = tokens_flat.view(batch_size, subseq_len)  # [B, sub_S]
+            y.append(acc_frame)
+
+            # 编码新生成的伴奏帧并更新全局状态
+            # acc_frame: [B, sub_S] -> [B, 1, sub_S] for local_encode
+            acc_token_type_ids = torch.ones_like(acc_frame, dtype=torch.long)  # [B, sub_S], acc type = 1
+            new_local_h = self.local_encode(
+                acc_frame.unsqueeze(1), acc_token_type_ids.unsqueeze(1)
+            )  # [B, 1, sub_S] -> [B*1, sub_S, H]
+            new_reduced_h = new_local_h[:, -1, :].view(batch_size, 1, -1)  # [B, 1, H]
+            reduced_global_h = torch.cat([reduced_global_h, new_reduced_h], dim=1)
+
+        return y  # list of generated frames [B, sub_S]
 
     def loss(self, x_mel, x_acc, pitch_shift):
         """计算模型的交叉熵损失。

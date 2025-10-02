@@ -151,7 +151,7 @@ callbacks = {
         save_top_k=3,
         save_last=True,
         every_n_epochs=10,
-        filename="val/{epoch}-{val/epoch/loss:.4f}",
+        filename="val/{epoch}-{loss:.4f}",
     )
 }
 
