@@ -273,7 +273,7 @@ class OldPtM2ANew(BaseModel):
             next_probs = F.one_hot(logits.argmax(dim=-1), N_TOKENS).float()  # [B*S, sub_S, N_TOKENS]
         else:
             next_probs = F.softmax(logits / temperature, dim=-1)  # [B*S, sub_S, N_TOKENS]
-            
+
         next_probs = next_probs.reshape(-1, N_TOKENS)  # [B*S*sub_S, N_TOKENS]
         y_next = torch.multinomial(next_probs, 1)  # [B*S*sub_S, 1]
         y_next = y_next.view(h.size(0), h.size(1), 1)  # [B*S, sub_S, 1]
@@ -408,7 +408,7 @@ class OldPtM2ANew(BaseModel):
         token_type_ids = frame_type.unsqueeze(0).unsqueeze(-1).expand(batch_size, seq_len, subseq_len)
         local_h = self.local_encode(x, token_type_ids)  # [B*S, sub_S, H]
         global_h = local_h.view(batch_size, seq_len, subseq_len, -1)  # [B, S, sub_S, H]
-        sos = self.global_sos.view(1, 1, 1, -1).repeat(batch_size, seq_len, subseq_len, 1)
+        sos = self.global_sos.view(1, 1, 1, -1).repeat(batch_size, 1, subseq_len, 1)
         global_h = torch.cat([sos, global_h], dim=1)  # [B, S+1, sub_S, H]
 
         reduced_global_h = global_h[:, :, -1, :]  # [B, S+1, H]
@@ -420,8 +420,9 @@ class OldPtM2ANew(BaseModel):
                 x_mel_gt,
                 torch.zeros_like(x_mel_gt, dtype=torch.long, device=x_mel_gt.device),
             )  # [B*S_mel, sub_S, H]
+            batched_local_h_mel = local_h_mel.view(batch_size, seq_len_gt, subseq_len, -1)  # [B, S_mel, sub_S, H]
             global_h_mel = local_h_mel.view(batch_size, seq_len_gt, subseq_len, -1)  # [B, S_mel, sub_S, H]
-           
+
             # SOS mel 不该存在
             # sos_mel = self.global_sos.view(1, 1, 1, -1).repeat(batch_size, 1, 1, 1)
             # global_h_mel = torch.cat([sos_mel, global_h_mel[:, :-1, :, :]], dim=1)  # [B, S_mel -1 +1, sub_S, H]
@@ -446,20 +447,23 @@ class OldPtM2ANew(BaseModel):
                     print(f"y_next shape: {y_next.shape}")
                     y.append(y_next[:, -1, :])  # [B, sub_S]
                     # next mel frame: 0
-                    token_type_ids = torch.ones_like(y_next[:, -1:, :], dtype=torch.long, device=y_next.device)  # [B,1, sub_S]
-                    
-                    local_h = self.local_encode( y_next[:, -1:, :], token_type_ids=token_type_ids)  # [B*S, sub_S, H]
+                    token_type_ids = torch.ones_like(
+                        y_next[:, -1:, :], dtype=torch.long, device=y_next.device
+                    )  # [B,1, sub_S]
+
+                    local_h = self.local_encode(y_next[:, -1:, :], token_type_ids=token_type_ids)  # [B*S, sub_S, H]
                     print(f"local h shape: {local_h.shape}")
                     reduced_global_h = torch.cat(
                         [
                             reduced_global_h,
-                            local_h.view(
-                                batch_size, -1, subseq_len, self.hidden_size
-                            )[:, :, -1, :],
+                            local_h.view(batch_size, -1, subseq_len, self.hidden_size)[:, :, -1, :],
                         ],
                         dim=1,
                     )  # [B, cur_len + 1, H]
                 elif i % 2 == 1:  # use gt melody
+                    temp_local_h = batched_local_h_mel[:, i // 2, :, :]  # [B, sub_S, H]
+                    temp_local_h = temp_local_h.view(batch_size * 1, subseq_len, self.hidden_size)  # [B*S, sub_S, H]
+                    local_h = torch.cat([local_h, temp_local_h], dim=0)  # [B*S + B, sub_S, H]
                     global_h_prev_mel = reduced_global_h_mel[:, i // 2, :].unsqueeze(1)  # [B, 1, H]
                     reduced_global_h = torch.cat([reduced_global_h, global_h_prev_mel], dim=1)  # [B, cur_len + 1, H]
                     y.append(x_mel_gt[:, i // 2, :])  # [B, S_mel//2 ,sub_S]
