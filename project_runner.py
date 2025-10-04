@@ -1,4 +1,4 @@
-from config.sfs_transformer import project
+from config.py_config.sfs_transformer import project
 # from src._project.base.project import ProjectManager
 
 # project_manager = ProjectManager(project)
