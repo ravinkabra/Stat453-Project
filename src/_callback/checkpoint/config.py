@@ -62,7 +62,7 @@ class ModelCheckpointParams:
     enable_version_counter: bool = Field(default=True, description="是否启用版本计数器")
 
     # 自定义参数
-    custom_save_kwargs: Dict[str, Any] = Field(default_factory=dict, description="传递给 ModelCheckpoint 的其他参数")
+    # custom_save_kwargs: Dict[str, Any] = Field(default_factory=dict, description="传递给 ModelCheckpoint 的其他参数")
 
 
 # 预定义配置函数

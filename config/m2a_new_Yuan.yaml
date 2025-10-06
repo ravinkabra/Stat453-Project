@@ -1,10 +1,10 @@
 name: training_project
 description: ''
-save_dir: ./output/m2a_example
-experiment_name: m2a_experiment-384
+save_dir: ./output/m2a_new_Yuan
+experiment_name: target_length=384
 version: 0.0.
 model:
-  _target_: src.model.old_pt_m2a_transformer.model.OldPtM2ATransformer
+  _target_: src.model.old_pt_m2a_new_.model.OldPtM2ANew
   optimizer:
     _target_: torch.optim.Adam
     lr: 0.0001
@@ -107,7 +107,7 @@ model:
       hidden_act: gelu
       intermediate_size: 3072
       hidden_dropout_prob: 0.1
-      attention_probs_dropout_prob: 0.1
+      attention_probs_dropout_prob: 0.0
       max_position_embeddings: 1536
       type_vocab_size: 2
       initializer_range: 0.02
@@ -169,7 +169,7 @@ model:
       hidden_act: gelu
       intermediate_size: 3072
       hidden_dropout_prob: 0.1
-      attention_probs_dropout_prob: 0.1
+      attention_probs_dropout_prob: 0.0
       max_position_embeddings: 1536
       type_vocab_size: 2
       initializer_range: 0.02
@@ -231,7 +231,7 @@ model:
       hidden_act: gelu
       intermediate_size: 3072
       hidden_dropout_prob: 0.1
-      attention_probs_dropout_prob: 0.1
+      attention_probs_dropout_prob: 0.0
       max_position_embeddings: 1536
       type_vocab_size: 2
       initializer_range: 0.02
@@ -251,7 +251,7 @@ datamodule:
     drop_last: false
     persistent_workers: false
     file_path: /home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt
-    target_length: 192
+    target_length: 384
     split_ratio: 9
     stage: train
   val:
@@ -263,7 +263,7 @@ datamodule:
     drop_last: false
     persistent_workers: false
     file_path: /home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt
-    target_length: 192
+    target_length: 384
     split_ratio: 9
     stage: train
 trainer:
@@ -295,6 +295,19 @@ trainer:
   barebones: false
   sync_batchnorm: false
   reload_dataloaders_every_n_epochs: 0
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    filename: val/{epoch}-{val/epoch/loss:.4f}
+    monitor: val/epoch/loss
+    save_top_k: 3
+    mode: min
+    save_last: true
+    every_n_epochs: 10
+    auto_insert_metric_name: true
+    save_weights_only: false
+    enable_version_counter: true
+    custom_save_kwargs: {}
 loggers:
   csv:
     _target_: pytorch_lightning.loggers.CSVLogger

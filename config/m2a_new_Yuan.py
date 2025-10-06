@@ -1,12 +1,7 @@
 from src._project.base.config import ProjectConfig
 from src._datamodule.base.config import BaseDataModuleConfig
 
-# from src.dataset.tutorial_mnist.config import MnistDatasetConfig
-# from src.model.tutorial_mnist.config import MnistModelConfig
-# from src.network.tutorial_lenet.config import LeNetConfig
 from src.dataset.old_pt.config import OldPtDatasetConfig
-from src.model.old_pt_m2a_transformer.config import OldPtM2ATransformerConfig
-from src.network.customized_roformer.config import CustomizedRoFormerEncoderParams
 
 from src._optimizer.adam.config import AdamParams
 from src._lr_scheduler.onecycle.config import OneCycleLRParams
@@ -16,39 +11,29 @@ from src.metric._manager import (
     MetricLogConfig,
 )
 from src.metric.value_recoder.config import ValueRecorderParams
-from torchmetrics import MeanMetric
 
-# from torchmetrics.classification import Accuracy, F1Score, Precision, Recall
-from src.metric.classification.config import (
-    AccuracyParams,
-    F1ScoreParams,
-    PrecisionParams,
-    RecallParams,
-)
 from src._logger import TensorBoardLoggerParams, CSVLoggerParams
 from src._trainer.base.config import BaseTrainerConfig
-from src._callback.sample_saver.config import (
-    SampleSaverCallbackConfig,
-    SaveKeyConfig,
-)
-target_lenth = 384
+
+target_length = 384
+
 train_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
-    batch_size=8,
+    batch_size=4,
     num_workers=0,
     persistent_workers=False,
-    target_length=target_lenth,
+    target_length=target_length,
     shuffle=True,
 )
 
 val_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
     split_ratio=9,
-    batch_size=12,
+    batch_size=8,
     num_workers=0,
     shuffle=False,
-    target_length=target_lenth,
+    target_length=target_length,
     persistent_workers=False,
 )
 datamodule = BaseDataModuleConfig(train=train_dataset, val=val_dataset)
@@ -79,7 +64,11 @@ metric_manager = MetricManagerConfig(
         ),
     }
 )
+from src.model.old_pt_m2a_new_.config import OldPtM2ANewConfig
+from src.network.customized_roformer.config import CustomizedRoFormerEncoderParams
 from transformers.models.roformer import RoFormerConfig
+
+# att_acc_dropout_prob = 0.2
 
 local_encoder_network = CustomizedRoFormerEncoderParams(
     config=RoFormerConfig(
@@ -90,7 +79,12 @@ local_encoder_network = CustomizedRoFormerEncoderParams(
         intermediate_size=3072,
         hidden_act="gelu",
         hidden_dropout_prob=0.1,
-        attention_probs_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.0,
+        # Custom parameters not in the original RoFormerConfig
+        # acc_dropout_prob=att_acc_dropout_prob,
+        # use_acc_dropout=True,
+        # acc_positions="even",
+        # acc_mode="from_acc",
     )
 )
 
@@ -103,7 +97,12 @@ main_encoder_network = CustomizedRoFormerEncoderParams(
         intermediate_size=3072,
         hidden_act="gelu",
         hidden_dropout_prob=0.1,
-        attention_probs_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.0,
+        # Custom parameters not in the original RoFormerConfig
+        # acc_dropout_prob=att_acc_dropout_prob,
+        # use_acc_dropout=True,
+        # acc_positions="even",
+        # acc_mode="from_acc",
     )
 )
 
@@ -116,11 +115,16 @@ local_decoder_network = CustomizedRoFormerEncoderParams(
         intermediate_size=3072,
         hidden_act="gelu",
         hidden_dropout_prob=0.1,
-        attention_probs_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.0,
+        # Custom parameters not in the original RoFormerConfig
+        # acc_dropout_prob=att_acc_dropout_prob,
+        # use_acc_dropout=True,
+        # acc_positions="even",
+        # acc_mode="from_acc",
     )
 )
 
-model = OldPtM2ATransformerConfig(
+model = OldPtM2ANewConfig(
     local_encoder_network=local_encoder_network,
     global_network=main_encoder_network,
     local_decoder_network=local_decoder_network,
@@ -136,7 +140,10 @@ trainer = BaseTrainerConfig(
     # max_epochs=3,
     log_every_n_steps=10,
 )
+
 from src._callback.checkpoint.config import ModelCheckpointParams
+from pytorch_lightning.callbacks import ModelCheckpoint
+
 callbacks = {
     "model_checkpoint": ModelCheckpointParams(
         monitor="val/epoch/loss",
@@ -144,14 +151,15 @@ callbacks = {
         save_top_k=3,
         save_last=True,
         every_n_epochs=10,
-        filename="{epoch:02d}-{val/epoch/loss:.4f}",
+        filename="val/{epoch}-{loss:.4f}",
     )
 }
+
 project = ProjectConfig(
     project_name="M2A-Example",
-    save_dir="./output/m2a_example",
+    save_dir="./output/m2a_new_Yuan",
     log_level="INFO",
-    experiment_name=f"m2a_experiment-len:{target_lenth}",
+    experiment_name=f"target_length={target_length}",
     datamodule=datamodule,
     model=model,
     mode="train",
@@ -161,4 +169,4 @@ project = ProjectConfig(
     version="0.0.",
 )
 
-project.to_yaml("./config/m2a_example.yaml", use_original_config=True)
+project.to_yaml("./config/m2a_new_Yuan.yaml", use_original_config=True)
