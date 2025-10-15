@@ -31,6 +31,7 @@ from src._callback.sample_saver.config import (
     SampleSaverCallbackConfig,
     SaveKeyConfig,
 )
+
 target_lenth = 384
 train_dataset = OldPtDatasetConfig(
     file_path="/home/ubuntu/ugrip/data/pop909/pop909_acc_cp4.pt",
@@ -133,10 +134,11 @@ loggers = {
     "tensorboard": TensorBoardLoggerParams(),
 }
 trainer = BaseTrainerConfig(
-    # max_epochs=3,
+    max_epochs=-1,
     log_every_n_steps=10,
 )
 from src._callback.checkpoint.config import ModelCheckpointParams
+
 callbacks = {
     "model_checkpoint": ModelCheckpointParams(
         monitor="val/epoch/loss",
@@ -161,4 +163,4 @@ project = ProjectConfig(
     version="0.0.",
 )
 
-project.to_yaml("./config/m2a_example.yaml", use_original_config=True)
+project.to_yaml("./config/m2a_retrain_basline_v2.yaml", use_original_config=True)
