@@ -1,4 +1,4 @@
-from src.model.old_pt_m2a_transformer.model import OldPtM2ATransformer, EOS_TOKEN, PAD_TOKEN
+from src.model.old_pt_m2a_transformer_with_att.model import OldPtM2ATransformerWithAttention, EOS_TOKEN, PAD_TOKEN
 from src._utils.preprocess_midi2pt_dataset import preprocess_midi, DURATION_TEMPLATES
 import torch
 import pretty_midi
@@ -67,22 +67,35 @@ def decompress(model, byte_arr_mel, byte_arr_acc, device):
     return model.preprocess(x, pitch_shift=torch.zeros(1, dtype=torch.int8).to(device), y=y)
 
 
-def continuation(model, midi_path, prompt_length=100, generation_length=400, temperature=1.0, n_samples=1, gt_mel=True, device='cuda'):
-    if os.path.isfile(midi_path):
+def continuation(model, midi_path_prompt, midi_path_gt, prompt_length=100, generation_length=400, temperature=1.0, n_samples=1, gt_mel=True, device='cuda'):
+    if os.path.isfile(midi_path_prompt):
         pass
     else:
-        print(f"Error: {midi_path} is not a valid file.")
-    byte_arr_mel = preprocess_midi(midi_path, 4)
-    byte_arr_acc = preprocess_midi(midi_path.replace("mel", "acc"), 4)
+        print(f"Error: {midi_path_prompt} is not a valid file (prompt).")
+    byte_arr_mel = preprocess_midi(midi_path_prompt, 4)
+    byte_arr_acc = preprocess_midi(midi_path_prompt.replace("mel", "acc"), 4)
+    if os.path.isfile(midi_path_gt):
+        pass
+    else:
+        print(f"Error: {midi_path_gt} is not a valid file (gt).")
+    byte_arr_mel_gt = preprocess_midi(midi_path_gt, 4)
+    byte_arr_acc_gt = preprocess_midi(midi_path_gt.replace("mel", "acc"), 4)
 
     if byte_arr_mel is None:
-        print(f"Error: preprocess_midi returned None for mel file: {midi_path}")
+        print(f"Error: preprocess_midi returned None for mel file (prompt): {midi_path_prompt}")
         return  # Skip this MIDI file
     if byte_arr_acc is None:
-        print(f"Error: preprocess_midi returned None for acc file: {midi_path.replace('mel', 'acc')}")
+        print(f"Error: preprocess_midi returned None for acc file (prompt): {midi_path_prompt.replace('mel', 'acc')}")
+        return  # Skip this MIDI file
+    if byte_arr_mel_gt is None:
+        print(f"Error: preprocess_midi returned None for mel file (gt): {midi_path_gt}")
+        return  # Skip this MIDI file
+    if byte_arr_acc_gt is None:
+        print(f"Error: preprocess_midi returned None for acc file (gt): {midi_path_gt.replace('mel', 'acc')}")
         return  # Skip this MIDI file
 
     x_mel, x_acc = decompress(model, byte_arr_mel[0], byte_arr_acc[0], device=device)
+    x_mel_gt, x_acc_gt = decompress(model, byte_arr_mel_gt[0], byte_arr_acc_gt[0], device=device)
 
     if prompt_length == 0:
         B, S, L = x_mel.shape
@@ -96,12 +109,13 @@ def continuation(model, midi_path, prompt_length=100, generation_length=400, tem
     if not gt_mel:
         decode_output(
             [x_mel[:, i, :] for i in range(x_mel.shape[1])],
-            f"temp/{model.save_name}/{os.path.basename(midi_path)}_originalmelody.mid",
+            f"temp/{model.save_name}/{os.path.basename(midi_path_prompt)}_originalmelody.mid",
             single=True,
             tempo=90.0,
         )
-    x_mel_gt = x_mel.clone()
-    x_mel_gt = x_mel_gt[:, first_timestep - 1 + prompt_length :]
+    
+    x_mel_gt = x_mel_gt[:, first_timestep - 1 :] # gt 文件从头开始，不跳过 prompt_length
+    # x_mel_gt = x_mel_gt[:, first_timestep - 1 + prompt_length :] # 对应位置裁切，好比较
     x_mel = x_mel[:, :prompt_length]
     x_acc = x_acc[:, :prompt_length]
     batch_size, seq_len, subseq_len = x_mel.shape  # 10*384*8
@@ -110,7 +124,7 @@ def continuation(model, midi_path, prompt_length=100, generation_length=400, tem
 
     if prompt_length != 0:
         decode_output(
-            [x[:, i, :] for i in range(x.shape[1])], f"temp/{model.save_name}/{os.path.basename(midi_path)}_promptlen{prompt_length}.mid", tempo=90.0
+            [x[:, i, :] for i in range(x.shape[1])], f"temp/{model.save_name}/{os.path.basename(midi_path_prompt)}_promptlen{prompt_length}.mid", tempo=90.0
         )
 
     with torch.no_grad():
@@ -129,7 +143,7 @@ def continuation(model, midi_path, prompt_length=100, generation_length=400, tem
         output_i = [output[j][i : i + 1, :] for j in range(len(output))]
         with open(f"tensor_output_original_inference_wo_gt_{i}.txt", "w") as f:
             f.write(str(output_i))
-        decode_output(output_i, f"temp/{model.save_name}/prompt{prompt_length}/{os.path.basename(midi_path)}_temp{temperature}_{i}.mid", tempo=90.0)
+        decode_output(output_i, f"temp/{model.save_name}/prompt{prompt_length}/{os.path.basename(midi_path_gt)}_temp{temperature}_{i}.mid", tempo=90.0)
 
 
 if __name__ == "__main__":
@@ -153,15 +167,16 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     model_path = args.model_path
-    model_path = "/home/ubuntu/stanleyz/shared_models/RetrainBaseline/v02/loss=0.4543.ckpt"
+    model_path = "/home/ubuntu/stanleyz/shared_models/BaselineDropout/0.3/epoch=743-step=150288.ckpt"
 
-    model = OldPtM2ATransformer.load_from_checkpoint(checkpoint_path=model_path, map_location=device)
+    model = OldPtM2ATransformerWithAttention.load_from_checkpoint(checkpoint_path=model_path, map_location=device)
     model.save_name = os.path.basename(model_path)
     model.to(device)  # Move model to GPU
     model.eval()
 
     midi_file_path_set = ['/home/ubuntu/stanleyz/StreamMUSE/inference_benchmark/inputs/aria_unique_skyline_top2_subset_5/mel', '/home/ubuntu/stanleyz/StreamMUSE/input/mel', '/home/ubuntu/stanleyz/StreamMUSE/inference_benchmark/inputs/test_set/mel']
-
+    midi_prompt = '/home/ubuntu/stanleyz/StreamMUSE/input/mel/001.mid'
+    
     end_pre_time = time.time()
     print(f"Model loading time (before the inference): {end_pre_time - start_pre_time:.2f} seconds")
 
@@ -170,8 +185,9 @@ if __name__ == "__main__":
             if midi.endswith('mid'):
                 midi = os.path.join(midi_file_path, midi)
                 start_true_generation_time = time.time()
-                continuation(model, midi, temperature=args.temperature, generation_length=300, n_samples=args.n_samples, prompt_length=args.prompt_len, gt_mel=True, device=device)
+                continuation(model, midi_prompt, midi, temperature=args.temperature, generation_length=600, n_samples=args.n_samples, prompt_length=args.prompt_len, gt_mel=True, device=device)
                 end_true_generation_time = time.time()
                 print(f"Total time for generating {midi}: {end_true_generation_time - start_true_generation_time:.2f} seconds")
-    # midi = '/home/ubuntu/ugrip/stanleyz/StreamMUSE/input/mel/001.mid'
-    # continuation(model, midi, temperature=args.temperature, generation_length=100, n_samples=args.n_samples, prompt_length=args.prompt_len, gt_mel=False)
+    
+    # midi_gt = '/home/ubuntu/stanleyz/StreamMUSE/inference_benchmark/inputs/test_set/mel/nyan_cat.mid'
+    # continuation(model, midi_prompt, midi_gt, temperature=args.temperature, generation_length=300, n_samples=args.n_samples, prompt_length=args.prompt_len, gt_mel=True)
