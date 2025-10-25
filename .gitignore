@@ -1,6 +1,8 @@
 data/
 output/
 original_dataset/
+experiment/
+temp/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
