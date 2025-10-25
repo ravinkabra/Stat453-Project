@@ -6,8 +6,10 @@ import os
 import argparse
 from typing import Literal
 import numpy as np
+
 # import pdb
 import time
+
 
 def decode_output(outputs, save_path, tempo=120.0, prompt=True, single=False):
     midi = pretty_midi.PrettyMIDI(initial_tempo=tempo)
@@ -55,8 +57,9 @@ def decode_output(outputs, save_path, tempo=120.0, prompt=True, single=False):
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     midi.write(save_path)
 
+
 # change dim, and do the preprocess
-# a list of subseq: [num_logical_ticks, max_polyphony*3] 
+# a list of subseq: [num_logical_ticks, max_polyphony*3]
 # ->
 # [1, num_logical_ticks, max_polyphony*2]
 def decompress(model, byte_arr_mel, byte_arr_acc, device):
@@ -67,7 +70,9 @@ def decompress(model, byte_arr_mel, byte_arr_acc, device):
     return model.preprocess(x, pitch_shift=torch.zeros(1, dtype=torch.int8).to(device), y=y)
 
 
-def continuation(model, midi_path, prompt_length=100, generation_length=400, temperature=1.0, n_samples=1, gt_mel=True, device='cuda'):
+def continuation(
+    model, midi_path, prompt_length=100, generation_length=400, temperature=1.0, n_samples=1, gt_mel=True, device="cuda"
+):
     if os.path.isfile(midi_path):
         pass
     else:
@@ -102,6 +107,15 @@ def continuation(model, midi_path, prompt_length=100, generation_length=400, tem
         )
     x_mel_gt = x_mel.clone()
     x_mel_gt = x_mel_gt[:, first_timestep - 1 + prompt_length :]
+
+    # This is to get the corresponding ground truth acc and mel, which will be used
+    # in the evaluation of the generated results.
+    true_x_mel = x_mel[:, : prompt_length + generation_length // 2]
+    true_x_acc = x_acc[:, : prompt_length + generation_length // 2]
+    batch_size, seq_len, subseq_len = true_x_mel.shape
+    stacked = torch.stack([true_x_acc, true_x_mel], dim=2)
+    true_x = stacked.view(batch_size, seq_len * 2, subseq_len)
+
     x_mel = x_mel[:, :prompt_length]
     x_acc = x_acc[:, :prompt_length]
     batch_size, seq_len, subseq_len = x_mel.shape  # 10*384*8
@@ -110,7 +124,16 @@ def continuation(model, midi_path, prompt_length=100, generation_length=400, tem
 
     if prompt_length != 0:
         decode_output(
-            [x[:, i, :] for i in range(x.shape[1])], f"temp/{model.save_name}/{os.path.basename(midi_path)}_promptlen{prompt_length}.mid", tempo=90.0
+            [x[:, i, :] for i in range(x.shape[1])],
+            f"experiment/attention_dropout/{model.save_name}/{os.path.basename(midi_path)}_promptlen{prompt_length}.mid",
+            tempo=90.0,
+        )
+
+        # decode output the corresponding ground truth
+        decode_output(
+            [true_x[:, i, :] for i in range(true_x.shape[1])],
+            f"experiment/attention_dropout/{model.save_name}/prompt{prompt_length}_gen{generation_length}/gt/{os.path.basename(midi_path)}.mid",
+            tempo=90.0,
         )
 
     with torch.no_grad():
@@ -119,17 +142,23 @@ def continuation(model, midi_path, prompt_length=100, generation_length=400, tem
 
         start_time = time.time()
         if prompt_length == 0:
-            output = model.global_sampling_from_scratch(x_mel_gt, temperature=temperature, max_seq_len=generation_length)
+            output = model.global_sampling_from_scratch(
+                x_mel_gt, temperature=temperature, max_seq_len=generation_length
+            )
         else:
-            output = model.global_sampling(x, x_mel_gt=x_mel_gt if gt_mel else None, temperature=temperature, max_seq_len=generation_length)
+            output = model.global_sampling(
+                x, x_mel_gt=x_mel_gt if gt_mel else None, temperature=temperature, max_seq_len=generation_length
+            )
         end_time = time.time()
         print(f"Generation time: {end_time - start_time:.2f} seconds")
 
     for i in range(n_samples):
         output_i = [output[j][i : i + 1, :] for j in range(len(output))]
-        with open(f"tensor_output_original_inference_wo_gt_{i}.txt", "w") as f:
-            f.write(str(output_i))
-        decode_output(output_i, f"temp/{model.save_name}/prompt{prompt_length}/{os.path.basename(midi_path)}_temp{temperature}_{i}.mid", tempo=90.0)
+        decode_output(
+            output_i,
+            f"experiment/attention_dropout/{model.save_name}/prompt{prompt_length}_gen{generation_length}/generated/{os.path.basename(midi_path)}_temp{temperature}_{i}.mid",
+            tempo=90.0,
+        )
 
 
 if __name__ == "__main__":
@@ -141,11 +170,16 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="process midi folder(s) into usable tensors for the task")
 
-    parser.add_argument("--model_path", type=str, default="../shared_models/ModelBaseline/cp_transformer_909+ac+1k7_trackemb_interleavepos_v0.2_large_batch_40_schedule.epoch=00.val_loss=0.90296.ckpt", help="path to model checkpoint")
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        default="../shared_models/ModelBaseline/cp_transformer_909+ac+1k7_trackemb_interleavepos_v0.2_large_batch_40_schedule.epoch=00.val_loss=0.90296.ckpt",
+        help="path to model checkpoint",
+    )
     parser.add_argument("--prompt_len", type=int, default=75, help="length of prompt")
     parser.add_argument("--n_samples", type=int, default=1, help="number of samples")
     parser.add_argument("--temperature", type=float, default=1.0, help="temperature")
-    parser.add_argument("--model_size", type=str, default='0.12B', help="model size")
+    parser.add_argument("--model_size", type=str, default="0.12B", help="model size")
 
     args = parser.parse_args()
 
@@ -160,18 +194,30 @@ if __name__ == "__main__":
     model.to(device)  # Move model to GPU
     model.eval()
 
-    midi_file_path_set = ['/home/ubuntu/stanleyz/StreamMUSE/inference_benchmark/inputs/aria_unique_skyline_top2_subset_5/mel', '/home/ubuntu/stanleyz/StreamMUSE/input/mel', '/home/ubuntu/stanleyz/StreamMUSE/inference_benchmark/inputs/test_set/mel']
+    # midi_file_path_set = ['/home/ubuntu/stanleyz/StreamMUSE/inference_benchmark/inputs/aria_unique_skyline_top2_subset_5/mel', '/home/ubuntu/stanleyz/StreamMUSE/input/mel', '/home/ubuntu/stanleyz/StreamMUSE/inference_benchmark/inputs/test_set/mel']
+    midi_file_path_set = ["/home/ubuntu/ugrip/formatted_dataset/piast_yt_360/mel"]
 
     end_pre_time = time.time()
     print(f"Model loading time (before the inference): {end_pre_time - start_pre_time:.2f} seconds")
 
     for midi_file_path in midi_file_path_set:
         for midi in os.listdir(midi_file_path):
-            if midi.endswith('mid'):
+            if midi.endswith("mid"):
                 midi = os.path.join(midi_file_path, midi)
                 start_true_generation_time = time.time()
-                continuation(model, midi, temperature=args.temperature, generation_length=300, n_samples=args.n_samples, prompt_length=args.prompt_len, gt_mel=True, device=device)
+                continuation(
+                    model,
+                    midi,
+                    temperature=args.temperature,
+                    generation_length=384,
+                    n_samples=args.n_samples,
+                    prompt_length=args.prompt_len,
+                    gt_mel=True,
+                    device=device,
+                )
                 end_true_generation_time = time.time()
-                print(f"Total time for generating {midi}: {end_true_generation_time - start_true_generation_time:.2f} seconds")
+                print(
+                    f"Total time for generating {midi}: {end_true_generation_time - start_true_generation_time:.2f} seconds"
+                )
     # midi = '/home/ubuntu/ugrip/stanleyz/StreamMUSE/input/mel/001.mid'
     # continuation(model, midi, temperature=args.temperature, generation_length=100, n_samples=args.n_samples, prompt_length=args.prompt_len, gt_mel=False)

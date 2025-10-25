@@ -9,10 +9,13 @@ import json
 import pretty_midi
 import argparse
 
-tokenize_dict = {'<sos>': 0, '<eos>': 1, '<pad>': 2}
+tokenize_dict = {"<sos>": 0, "<eos>": 1, "<pad>": 2}
 tokenize_count = [-1, -1, -1]
 
-DURATION_TEMPLATES = np.array([1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096])
+DURATION_TEMPLATES = np.array(
+    [1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096]
+)
+
 
 def update_token_dict(midi_path, beat_div=4):
     try:
@@ -41,7 +44,34 @@ def update_token_dict(midi_path, beat_div=4):
                     tokenize_count.append(0)
                 tokenize_count[tokenize_dict[key]] += 1
 
-def preprocess_midi(midi_path, max_polyphony, beat_div=4, ins_ids='all'):
+
+def preprocess_midi(midi_path, max_polyphony, beat_div=4, ins_ids="all"):
+    """
+    读取并处理一个 MIDI 文件，将其转换为模型训练/推理所需的张量格式。
+
+    参数:
+        midi_path (str): MIDI 文件路径。
+        max_polyphony (int): 每个时间步允许的最大复音数（即最多同时有多少个音符）。
+        beat_div (int, 可选): 每拍的分割数，决定时间步的精度。默认 4。
+        ins_ids (str 或 list, 可选): 指定要处理的乐器轨道。'all' 表示所有轨道。
+
+    返回:
+        torch.Tensor: 形状为 [时间步数, max_polyphony * 3] 的张量，每个音符用 [program, pitch, duration] 三元组表示。
+        torch.Tensor: 形状为 [2] 的 pitch shift 范围张量（[最小, 最大]），用于后续数据增强。
+
+    处理流程:
+        1. 读取 MIDI 文件，按指定节奏分割为时间步。
+        2. 遍历所有乐器轨道，根据 ins_ids 选择需要处理的轨道。
+        3. 对每个时间步，最多保留 max_polyphony 个音符，每个音符用 [program, pitch, duration] 表示。
+        4. duration 会根据 DURATION_TEMPLATES 进行量化。
+        5. 如果某个时间步的音符数不足 max_polyphony，则用特殊 token 填充（如 PAD 或 EOS）。
+        6. 所有轨道拼接后，返回最终的张量和 pitch shift 范围。
+
+    注意事项:
+        - 如果 MIDI 文件无有效音符或轨道，返回 None。
+        - duration 会被离散化为模板索引，pitch 超出范围会被过滤。
+        - 该函数适用于多轨/多复音的音乐数据预处理，便于后续模型训练和推理。
+    """
     # print(midi_path)
     try:
         midi = xf_midi.XFMidi(midi_path, constant_tempo=60.0 / beat_div)
@@ -78,33 +108,35 @@ def preprocess_midi(midi_path, max_polyphony, beat_div=4, ins_ids='all'):
                     if ins.is_drum:
                         duration = 0
                     else:
-                        duration = np.searchsorted(duration_boundaries, end_time - start_time) #为了做四舍五入的quantize
+                        duration = np.searchsorted(
+                            duration_boundaries, end_time - start_time
+                        )  # 为了做四舍五入的quantize
                         min_pitch = min(min_pitch, note.pitch)
                         max_pitch = max(max_pitch, note.pitch)
                     add_note = False
-                    if ins_id == 'all':
+                    if ins_id == "all":
                         add_note = True
                     elif isinstance(ins_id, int):
                         raise NotImplementedError
                     elif isinstance(ins_id, str):
-                        if '-' in ins_id:
-                            task, num = ins_id.split('-')
+                        if "-" in ins_id:
+                            task, num = ins_id.split("-")
                             num = int(num)
-                            if task == 'track':
+                            if task == "track":
                                 add_note = i == num
-                            elif task == 'upto':
+                            elif task == "upto":
                                 add_note = i <= num
-                            elif task == 'from':
+                            elif task == "from":
                                 add_note = i >= num
-                            elif task == 'notrack':
+                            elif task == "notrack":
                                 add_note = i != num
                             else:
                                 raise NotImplementedError
-                        elif ins_id == 'drum':
+                        elif ins_id == "drum":
                             add_note = ins.is_drum
-                        elif ins_id == 'nondrum':
+                        elif ins_id == "nondrum":
                             add_note = not ins.is_drum
-                        elif ins_id == 'empty':
+                        elif ins_id == "empty":
                             add_note = False
                         else:
                             raise NotImplementedError
@@ -115,11 +147,19 @@ def preprocess_midi(midi_path, max_polyphony, beat_div=4, ins_ids='all'):
                         rolls[start_time, polyphony_counts[start_time]] = [program, note.pitch, duration]
                         # [program, pitch, duration]
                         polyphony_counts[start_time] += 1
-        if not has_any_note and ins_id != 'empty':
+        if not has_any_note and ins_id != "empty":
             return None  # invalid midi file
         for i in range(midi_end_time):
             # Sort notes by ins first, then by pitch, then by duration
-            rolls[i, :polyphony_counts[i]] = rolls[i, :polyphony_counts[i]][np.lexsort((rolls[i, :polyphony_counts[i], 2], rolls[i, :polyphony_counts[i], 1], rolls[i, :polyphony_counts[i], 0]))]
+            rolls[i, : polyphony_counts[i]] = rolls[i, : polyphony_counts[i]][
+                np.lexsort(
+                    (
+                        rolls[i, : polyphony_counts[i], 2],
+                        rolls[i, : polyphony_counts[i], 1],
+                        rolls[i, : polyphony_counts[i], 0],
+                    )
+                )
+            ]
             if polyphony_counts[i] < max_polyphony:
                 rolls[i, polyphony_counts[i], 0] = 254  # EOS token
         result_rolls.append(rolls)
@@ -129,7 +169,10 @@ def preprocess_midi(midi_path, max_polyphony, beat_div=4, ins_ids='all'):
     pitch_shift_max = 127 - max_pitch
     pitch_shift_min = -min_pitch
     # print(midi_path, ": final", torch.tensor(result_rolls.reshape(midi_end_time, -1)).shape, torch.tensor([pitch_shift_min, pitch_shift_max], dtype=torch.int8).shape)
-    return torch.tensor(result_rolls.reshape(midi_end_time, -1)), torch.tensor([pitch_shift_min, pitch_shift_max], dtype=torch.int8)
+    return torch.tensor(result_rolls.reshape(midi_end_time, -1)), torch.tensor(
+        [pitch_shift_min, pitch_shift_max], dtype=torch.int8
+    )
+
 
 def tensor_to_midi(
     rolls: torch.LongTensor,
@@ -140,8 +183,8 @@ def tensor_to_midi(
     """
     rolls: [T, 3*max_polyphony]  each row is
       [ prog0, pitch0, dur0,  prog1, pitch1, dur1,  ... ]
-      prog==254 -> EOS, pitch==255 -> PAD  
-    tempo: playback tempo in BPM  
+      prog==254 -> EOS, pitch==255 -> PAD
+    tempo: playback tempo in BPM
     instrument_program: GM program number (0=Steinway Grand Piano)
     """
     # 1) set up PrettyMIDI + one piano instrument
@@ -160,7 +203,7 @@ def tensor_to_midi(
         row = rolls[t]
         for slot in range(max_poly):
             base = slot * 3
-            prog  = int(row[base].item())
+            prog = int(row[base].item())
             pitch = int(row[base + 1].item())
             dur_i = int(row[base + 2].item())
 
@@ -177,51 +220,43 @@ def tensor_to_midi(
                 continue
 
             start = t * time_step
-            end   = start + DURATION_TEMPLATES[dur_i] * time_step
-            piano.notes.append(
-                pretty_midi.Note(
-                    velocity=100,
-                    pitch=pitch,
-                    start=start,
-                    end=end
-                )
-            )
+            end = start + DURATION_TEMPLATES[dur_i] * time_step
+            piano.notes.append(pretty_midi.Note(velocity=100, pitch=pitch, start=start, end=end))
 
     # 4) write file
     os.makedirs(os.path.dirname(save_path), exist_ok=True)
     pm.write(save_path)
+
 
 def create_tokenize_dict(folder):
     # Get all midi files in the folder, recursively
     midi_files = []
     for root, dirs, files in os.walk(folder):
         for file in files:
-            if file.endswith('.mid') or file.endswith('.MID'):
+            if file.endswith(".mid") or file.endswith(".MID"):
                 midi_files.append(os.path.join(root, file))
     from tqdm import tqdm
+
     for i, midi_file in enumerate(tqdm(midi_files)):
         update_token_dict(midi_file)
         if i % 100 == 0:
-            print('Tokenize dict:', len(tokenize_dict))
-    print('Tokenize dict:', len(tokenize_dict))
+            print("Tokenize dict:", len(tokenize_dict))
+    print("Tokenize dict:", len(tokenize_dict))
 
-def create_npy_dataset_from_midi(folders,
-                                 max_polyphony,
-                                 dataset_name,
-                                 ins_ids='all',
-                                 scan_subfolders=True,
-                                 max_idx=None):
 
+def create_npy_dataset_from_midi(
+    folders, max_polyphony, dataset_name, ins_ids="all", scan_subfolders=True, max_idx=None
+):
     # 1. 收集所有 .mid/.MID 文件
     midi_files = []
     for folder in folders:
         for filename in os.listdir(folder):
-            if filename.lower().endswith('.mid'):
+            if filename.lower().endswith(".mid"):
                 midi_files.append(os.path.join(folder, filename))
     midi_files = sorted(midi_files)
     if max_idx is not None:
         midi_files = midi_files[:max_idx]
-    print(f'Processing {len(midi_files)} files')
+    print(f"Processing {len(midi_files)} files")
 
     # 2. 定义一个 worker：对每个 midi_file 调用 preprocess_midi，并捕获异常
     def safe_preprocess(midi_path):
@@ -234,9 +269,7 @@ def create_npy_dataset_from_midi(folders,
             return (midi_path, None, None, str(e))
 
     # 3. 并行执行
-    results = Parallel(n_jobs=-1, verbose=10)(
-        delayed(safe_preprocess)(midi_path) for midi_path in midi_files
-    )
+    results = Parallel(n_jobs=-1, verbose=10)(delayed(safe_preprocess)(midi_path) for midi_path in midi_files)
 
     # 4. 拆分成功与失败
     successful_data = []
@@ -266,22 +299,21 @@ def create_npy_dataset_from_midi(folders,
         all_data = torch.cat(successful_data, dim=0)
         all_shifts = torch.cat(successful_shifts, dim=0)
         # 保存到 disk
-        torch.save(all_data, f'data/{dataset_name}.pt')
-        torch.save(all_shifts, f'data/{dataset_name}.pitch_shift_range.pt')
-        torch.save(torch.tensor(lengths), f'data/{dataset_name}.length.pt')
+        torch.save(all_data, f"data/{dataset_name}.pt")
+        torch.save(all_shifts, f"data/{dataset_name}.pitch_shift_range.pt")
+        torch.save(torch.tensor(lengths), f"data/{dataset_name}.length.pt")
     else:
         print("没有成功的文件，跳过保存。")
 
-    return [f'data/{dataset_name}.pt', f'data/{dataset_name}.length.pt']
+    return [f"data/{dataset_name}.pt", f"data/{dataset_name}.length.pt"]
+
 
 def sync(path_m, path_a):
-
     tensor_m = path_m[0]
     length_m = path_m[1]
 
     tensor_a = path_a[0]
     length_a = path_a[1]
-
 
     mel = torch.load(tensor_m)
     acc = torch.load(tensor_a)
@@ -298,8 +330,8 @@ def sync(path_m, path_a):
 
     for i in range(len(min_lengths)):
         # Trim subtensors to min length
-        adjusted_tensor1.append(mel[start_idx1:start_idx1 + min_lengths[i]])
-        adjusted_tensor2.append(acc[start_idx2:start_idx2 + min_lengths[i]])
+        adjusted_tensor1.append(mel[start_idx1 : start_idx1 + min_lengths[i]])
+        adjusted_tensor2.append(acc[start_idx2 : start_idx2 + min_lengths[i]])
 
         # Update indices
         start_idx1 += length_mel[i]
@@ -309,41 +341,39 @@ def sync(path_m, path_a):
     adjusted_tensor1 = torch.cat(adjusted_tensor1)
     adjusted_tensor2 = torch.cat(adjusted_tensor2)
 
-
     torch.save(min_lengths, length_m)
     torch.save(min_lengths, length_a)
-   
+
     torch.save(adjusted_tensor1, tensor_m)
     torch.save(adjusted_tensor2, tensor_a)
     print(adjusted_tensor1.shape)
     print(adjusted_tensor2.shape)
-    print('tensor matching complete')
+    print("tensor matching complete")
+
 
 def create_tensor(dataset_name, folders, max_polyphony=4):
-    paths = create_npy_dataset_from_midi(folders, max_polyphony, f'{dataset_name}_cp{max_polyphony}', scan_subfolders=False)
+    paths = create_npy_dataset_from_midi(
+        folders, max_polyphony, f"{dataset_name}_cp{max_polyphony}", scan_subfolders=False
+    )
     return paths
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="process midi folder(s) into usable tensors for the task")
-    
+
     # Positional arguments
-    parser.add_argument("--name",type=str,help="name your dataset")
-    parser.add_argument("--folders",nargs='+', type=str, help="paths to midi folders")
-    parser.add_argument("--polyphony",type=int,default=4,help="maximum number of notes allowed in one timestep")
+    parser.add_argument("--name", type=str, help="name your dataset")
+    parser.add_argument("--folders", nargs="+", type=str, help="paths to midi folders")
+    parser.add_argument("--polyphony", type=int, default=4, help="maximum number of notes allowed in one timestep")
 
     args = parser.parse_args()
 
-    melody_f = [os.path.join(f, 'mel') for f in args.folders]
-    accomp_f = [os.path.join(f, 'acc') for f in args.folders]
-    melody_n = args.name+'_mel'
-    accomp_n = args.name+'_acc'
+    melody_f = [os.path.join(f, "mel") for f in args.folders]
+    accomp_f = [os.path.join(f, "acc") for f in args.folders]
+    melody_n = args.name + "_mel"
+    accomp_n = args.name + "_acc"
 
     paths_m = create_tensor(melody_n, melody_f, max_polyphony=args.polyphony)
     paths_a = create_tensor(accomp_n, accomp_f, max_polyphony=args.polyphony)
-    
+
     sync(paths_m, paths_a)
-
-
-        
-
-    

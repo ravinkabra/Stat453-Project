@@ -472,7 +472,8 @@ class OldPtSFSTransformer(BaseModel):
 
         with torch.no_grad():
             # 1. 预处理旋律并构建初始序列 [SOM, mel, EOM, SOA]
-            x_mel_proc = self.preprocess(x_mel, torch.zeros(batch_size, device=device, dtype=torch.long))
+            # x_mel_proc = self.preprocess(x_mel, torch.zeros(batch_size, device=device, dtype=torch.long))
+            x_mel_proc = x_mel
 
             som_token = torch.full((batch_size, 1, subseq_len), SOM_TOKEN, device=device, dtype=torch.long)
             eom_token = torch.full((batch_size, 1, subseq_len), EOM_TOKEN, device=device, dtype=torch.long)
@@ -507,30 +508,30 @@ class OldPtSFSTransformer(BaseModel):
             h_global_input = torch.cat([sos, h], dim=1)
 
             generated_acc = []
-            eos_triggered = torch.zeros(batch_size, dtype=torch.bool, device=device)
+            eoa_triggered = torch.zeros(batch_size, dtype=torch.bool, device=device)
 
             # 4. 自回归生成循环
             for i in range(max_len):
                 # a. 全局编码
-                global_token_types_input = torch.cat(
-                    [torch.zeros(batch_size, 1, device=device, dtype=torch.long), prompt_types], dim=1
-                )
 
                 h_out = self.model(
                     h_global_input,
                     attention_mask=self.buffered_future_mask(h_global_input),
-                    token_type_ids=global_token_types_input,
                 )[0]
 
                 # b. 局部采样，只使用最后一个时间步的输出
                 next_acc_frame = self.local_sampling(h_out[:, -1], max_subseq_len=subseq_len, temperature=temperature)
 
                 # 如果某个样本已生成 EOS，则后续用 PAD 填充
-                next_acc_frame[eos_triggered] = PAD_TOKEN
-                eos_triggered = eos_triggered | (next_acc_frame == EOS_TOKEN).any(dim=-1)
+                actual_len = next_acc_frame.shape[1]
+                if actual_len < subseq_len:
+                    pad_len = subseq_len - actual_len
+                    padding = torch.full((batch_size, pad_len), PAD_TOKEN, dtype=torch.long, device=device)
+                    next_acc_frame = torch.cat([next_acc_frame, padding], dim=1)
+                eoa_triggered = eoa_triggered | (next_acc_frame == EOA_TOKEN).any(dim=-1)
 
                 generated_acc.append(next_acc_frame)
-                if torch.all(eos_triggered):
+                if torch.all(eoa_triggered):
                     break
 
                 # c. 准备下一轮的输入
@@ -548,9 +549,7 @@ class OldPtSFSTransformer(BaseModel):
                     [prompt_types, torch.ones((batch_size, 1), device=device, dtype=torch.long)], dim=1
                 )
 
-        return (
-            torch.cat(generated_acc, dim=1) if generated_acc else torch.empty(batch_size, 0, subseq_len, device=device)
-        )
+        return generated_acc
 
     # def configure_optimizers(self):
     #     max_lr = 1e-4
