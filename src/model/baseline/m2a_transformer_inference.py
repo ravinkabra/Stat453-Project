@@ -1,4 +1,4 @@
-from src.model.old_pt_m2a_transformer_with_att.model import OldPtM2ATransformerWithAttention, EOS_TOKEN, PAD_TOKEN
+from src.model.baseline.m2a_transformer import RoFormerSymbolicTransformer, EOS_TOKEN, PAD_TOKEN
 from src._utils.preprocess_midi2pt_dataset import preprocess_midi, DURATION_TEMPLATES
 import torch
 import pretty_midi
@@ -6,8 +6,7 @@ import os
 import argparse
 from typing import Literal
 import numpy as np
-
-# import pdb
+import pdb
 import time
 
 
@@ -140,14 +139,14 @@ def continuation(
     if prompt_length != 0:
         decode_output(
             [x[:, i, :] for i in range(x.shape[1])],
-            f"experiment/attention_dropout/{model.save_name}/{os.path.basename(midi_path)}_promptlen{prompt_length}.mid",
+            f"experiment/baseline/{model.save_name}/{os.path.basename(midi_path)}_promptlen{prompt_length}.mid",
             tempo=90.0,
         )
 
         # decode output the corresponding ground truth
         decode_output(
             [true_x[:, i, :] for i in range(true_x.shape[1])],
-            f"experiment/attention_dropout/{model.save_name}/prompt{prompt_length}_gen{generation_length}/gt/{os.path.basename(midi_path)}.mid",
+            f"experiment/baseline/{model.save_name}/prompt{prompt_length}_gen{generation_length}/gt/{os.path.basename(midi_path)}.mid",
             tempo=90.0,
         )
 
@@ -171,7 +170,7 @@ def continuation(
         output_i = [output[j][i : i + 1, :] for j in range(len(output))]
         decode_output(
             output_i,
-            f"experiment/attention_dropout/{model.save_name}/prompt{prompt_length}_gen{generation_length}/generated/{os.path.basename(midi_path)}_temp{temperature}_{i}.mid",
+            f"experiment/baseline/{model.save_name}/prompt{prompt_length}_gen{generation_length}/generated/{os.path.basename(midi_path)}_temp{temperature}_{i}.mid",
             tempo=90.0,
         )
 
@@ -188,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_path",
         type=str,
-        default="/home/ubuntu/stanleyz/shared_models/BaselineDropout/0.3/epoch=743-step=150288.ckpt",
+        default="/home/ubuntu/stanleyz/shared_models/ModelBaseline/cp_transformer_909+ac+1k7_trackemb_interleavepos_v0.2_large_batch_40_schedule.epoch=00.val_loss=0.90296.ckpt",
         help="path to model checkpoint",
     )
     parser.add_argument("--prompt_len", type=int, default=75, help="length of prompt")
@@ -202,13 +201,22 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     model_path = args.model_path
+    model_path = "/home/ubuntu/stanleyz/shared_models/ModelAiraDeduped0.25/1.5.5/epoch=64-val_loss=0.73.ckpt"
 
-    model = OldPtM2ATransformerWithAttention.load_from_checkpoint(checkpoint_path=model_path, map_location=device)
-    model.save_name = os.path.basename(model_path)
+    model = RoFormerSymbolicTransformer.load_from_checkpoint(
+        model_path, model_size=args.model_size, map_location=device
+    )
+    # model = OldPtM2ATransformerWithAttention.load_from_checkpoint(checkpoint_path=model_path, map_location=device)
+    # model.save_name = os.path.basename(model_path)
+    model.save_name = "AriaDeduped0.25B"
     model.to(device)  # Move model to GPU
     model.eval()
 
-    # midi_file_path_set = ['/home/ubuntu/stanleyz/StreamMUSE/inference_benchmark/inputs/aria_unique_skyline_top2_subset_5/mel', '/home/ubuntu/stanleyz/StreamMUSE/input/mel', '/home/ubuntu/stanleyz/StreamMUSE/inference_benchmark/inputs/test_set/mel']
+    # midi_file_path_set = [
+    #     "inference_benchmark/inputs/aria_unique_skyline_top2_subset_5/mel",
+    #     "input/mel",
+    #     "inference_benchmark/inputs/test_set/mel",
+    # ]
     midi_file_path_set = ["/home/ubuntu/ugrip/formatted_dataset/piast_yt_360/mel"]
 
     end_pre_time = time.time()
