@@ -201,7 +201,7 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
 
     model_path = args.model_path
-    model_path = "/home/ubuntu/stanleyz/shared_models/ModelAiraDeduped0.25/1.5.5/epoch=64-val_loss=0.73.ckpt"
+    # model_path = "/home/ubuntu/stanleyz/shared_models/ModelAiraDeduped0.25/1.5.5/epoch=64-val_loss=0.73.ckpt"
 
     model = RoFormerSymbolicTransformer.load_from_checkpoint(
         model_path, model_size=args.model_size, map_location=device
